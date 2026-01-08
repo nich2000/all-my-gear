@@ -33,9 +33,18 @@ apt install certbot
 systemctl start docker
 systemctl enable docker
 
+https://supabase.com/docs/reference/javascript/introduction
+
+https://supabase.com/docs/guides/self-hosting
+
 git clone https://github.com/supabase/supabase
-cd supabaseMin/docker
-cp .env.example .env
+mkdir all-my-gear
+cp -rf supabase/docker/* all-my-gear/
+cp supabase/docker/.env.example all-my-gear/.env
+cd all-my-gear
+docker compose pull
+
+sh ./utils/generate-keys.sh
 
 openssl rand -base64 32
 
