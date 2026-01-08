@@ -78,7 +78,7 @@
   --brand-orange: #ff7a3a; /* primary brand orange */
   --glass: rgba(255,255,255,0.8);
   --glass-2: rgba(255,255,255,0.7);
-  
+
   /* Default (Gear) color scheme - приглушенные серо-зеленые тона */
   --bg-primary-1: #0f1f1d;
   --bg-primary-2: #1a2f2d;
@@ -86,7 +86,7 @@
   --bg-primary-4: #1a2f2d;
   --bg-primary-5: #15262A;
   --bg-primary-6: #0f1f1d;
-  
+
   /* Transitions для плавной смены цветов */
   transition: --bg-primary-1 8s cubic-bezier(0.4, 0, 0.2, 1),
               --bg-primary-2 8s cubic-bezier(0.4, 0, 0.2, 1),
@@ -108,9 +108,9 @@ body{font-family:var(--font-body); background:linear-gradient(135deg, var(--bg-p
 
 /* Header - responsive structure that adapts to zoom */
 .topbar{
-  padding:24px 32px 12px; 
-  max-width:1200px; 
-  margin:0 auto; 
+  padding:24px 32px 12px;
+  max-width:1200px;
+  margin:0 auto;
   position:relative;
   display:grid;
   grid-template-columns:auto 1fr auto;
@@ -657,7 +657,7 @@ input[type=text], input[type=number], select, input[type=search], input[type=fil
   box-shadow:0 12px 32px rgba(45,58,48,0.2);
   border:1px solid rgba(110,122,105,0.2);
   border-radius:16px;
-  transition:all 0.5s cubic-bezier(0.4, 0, 0.2, 1), 
+  transition:all 0.5s cubic-bezier(0.4, 0, 0.2, 1),
              border-radius 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .card.expanded:hover{transform:none}
@@ -2224,8 +2224,6 @@ select.field-input {
   border-color: rgba(110, 122, 105, 0.3);
   transform: translateY(-1px);
 }
-  transform: translateY(-1px);
-}
 
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -2249,28 +2247,28 @@ select.field-input {
     margin: 10px;
     max-height: calc(100vh - 20px);
   }
-  
+
   .form-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .checkbox-grid {
     grid-template-columns: 1fr;
   }
-  
+
   .checklist-modal-header {
     padding: 24px 24px 20px;
   }
-  
+
   .checklist-modal-body {
     padding: 24px;
   }
-  
+
   .checklist-modal-footer {
     padding: 20px 24px;
     flex-direction: column-reverse;
   }
-  
+
   .modal-title-section h2 {
     font-size: 24px;
   }
@@ -2359,8 +2357,8 @@ body.checklists-mode {
   --bg-primary-6: #1A3F3C;
 }
 
-  margin-top: 24px;
-}
+/*  margin-top: 24px;*/
+/*}*/
 
 
 
@@ -2368,7 +2366,7 @@ body.checklists-mode {
 
 .items-order-modal-card .modal-header.branded-header {
   background: linear-gradient(135deg, #ff7a3a 0%, #ff6b2b 100%);
-  background-image: 
+  background-image:
     radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 2px, transparent 2px),
     radial-gradient(circle at 80% 50%, rgba(255,255,255,0.1) 1px, transparent 1px),
     radial-gradient(circle at 40% 20%, rgba(255,255,255,0.1) 1px, transparent 1px),
@@ -2450,7 +2448,7 @@ body.checklists-mode {
 /* Branded header for general modal-content */
 .modal-content .modal-header.branded-header {
   background: linear-gradient(135deg, #ff7a3a 0%, #ff6b2b 100%);
-  background-image: 
+  background-image:
     radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 2px, transparent 2px),
     radial-gradient(circle at 80% 50%, rgba(255,255,255,0.1) 1px, transparent 1px),
     radial-gradient(circle at 40% 20%, rgba(255,255,255,0.1) 1px, transparent 1px),
@@ -2953,4 +2951,3 @@ html {
     width: calc(100% / 0.9);
   }
 }
-

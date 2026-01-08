@@ -23,3 +23,26 @@ Files
 - `app.js` — application logic
 
 If you want, I can add JSON import/export, a printable view, cloud sync, or switch to storing images externally.
+
+apt update
+apt upgrade
+
+apt install docker.io
+apt install docker-compose-plugin
+apt install certbot
+systemctl start docker
+systemctl enable docker
+
+git clone https://github.com/supabase/supabase
+cd supabaseMin/docker
+cp .env.example .env
+
+openssl rand -base64 32
+
+docker compose up -d
+
+http://82.146.35.60:8000
+
+https://82.146.35.60:8443
+
+http://82.146.35.60:4000

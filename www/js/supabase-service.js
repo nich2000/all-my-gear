@@ -1,19 +1,55 @@
 // Supabase Service Layer
 // Handles authentication, database operations, and storage
 
+const MAX_INIT_ATTEMPTS = 50 // 5 seconds max wait
+
+// Initialize Supabase client (wait for SDK to load)
+let supabaseClient = null
+let initAttempts = 0
+
+function initSupabase() {
+  console.log('initSupabase')
+
+  if (window.supabase && window.supabase.createClient) {
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    console.log('Supabase client initialized')
+    return true
+  }
+  return false
+}
+
+// Try to initialize with retries
+function tryInitSupabase() {
+  console.log('tryInitSupabase')
+
+  if (initSupabase()) {
+    return
+  }
+
+  initAttempts++
+  if (initAttempts < MAX_INIT_ATTEMPTS) {
+    setTimeout(tryInitSupabase, 100) // Try every 100ms
+  } else {
+    console.error('Supabase SDK failed to load after 5 seconds')
+  }
+}
+
 // Helper to ensure supabase is initialized
 function getSupabase() {
-  if (!supabase) {
+  if (!supabaseClient) {
     throw new Error('Supabase client not initialized. Please refresh the page.')
   }
-  return supabase
+  return supabaseClient
 }
+
+// Start initialization attempts
+tryInitSupabase()
 
 const SupabaseService = {
   currentUser: null,
-  
+
   // ==================== AUTHENTICATION ====================
-  
+
   async signInWithGoogle() {
     const { data, error } = await getSupabase().auth.signInWithOAuth({
       provider: 'google',
@@ -24,7 +60,7 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signInWithApple() {
     const { data, error } = await getSupabase().auth.signInWithOAuth({
       provider: 'apple',
@@ -35,7 +71,7 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signInWithGitHub() {
     const { data, error } = await getSupabase().auth.signInWithOAuth({
       provider: 'github',
@@ -46,7 +82,7 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signInWithDiscord() {
     const { data, error } = await getSupabase().auth.signInWithOAuth({
       provider: 'discord',
@@ -57,7 +93,7 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signInWithFacebook() {
     const { data, error } = await getSupabase().auth.signInWithOAuth({
       provider: 'facebook',
@@ -68,7 +104,7 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signInWithTwitter() {
     const { data, error } = await getSupabase().auth.signInWithOAuth({
       provider: 'twitter',
@@ -79,7 +115,7 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signInWithEmail(email, password) {
     const { data, error } = await getSupabase().auth.signInWithPassword({
       email,
@@ -89,7 +125,7 @@ const SupabaseService = {
     this.currentUser = data.user
     return data
   },
-  
+
   async signUpWithEmail(email, password, nickname) {
     const { data, error } = await getSupabase().auth.signUp({
       email,
@@ -104,41 +140,41 @@ const SupabaseService = {
     if (error) throw error
     return data
   },
-  
+
   async signOut() {
     const { error } = await getSupabase().auth.signOut()
     if (error) throw error
     this.currentUser = null
   },
-  
+
   async getCurrentUser() {
     const { data: { user } } = await getSupabase().auth.getUser()
     this.currentUser = user
     return user
   },
-  
+
   onAuthStateChange(callback) {
     return getSupabase().auth.onAuthStateChanged((event, session) => {
       this.currentUser = session?.user || null
       callback(event, session)
     })
   },
-  
+
   async updateProfile(nickname, newPassword, avatarPath) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     const updates = {}
-    
+
     // Always update nickname in metadata
     if (nickname) {
       updates.data = { nickname }
-      
+
       // Add avatar to metadata if provided
       if (avatarPath) {
         updates.data.avatar_url = avatarPath
       }
     }
-    
+
     // Update password separately if provided
     if (newPassword) {
       const { error: pwdError } = await getSupabase().auth.updateUser({
@@ -149,7 +185,7 @@ const SupabaseService = {
         throw pwdError
       }
     }
-    
+
     // Update user metadata (nickname and avatar)
     if (updates.data) {
       const { data, error } = await getSupabase().auth.updateUser(updates)
@@ -160,58 +196,58 @@ const SupabaseService = {
       this.currentUser = data.user
       return data
     }
-    
+
     return { user: this.currentUser }
   },
-  
+
   // ==================== GEAR ITEMS ====================
-  
+
   async getAllGearItems() {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('gear_items')
       .select('*')
       .eq('user_id', this.currentUser.id)
       .order('category', { ascending: true })
       .order('order_index', { ascending: true, nullsLast: true })
       .order('created_at', { ascending: false })
-    
+
     if (error) throw error
     return data || []
   },
-  
+
   // Cache for max order index to avoid extra queries
   _maxOrderCache: null,
   _maxOrderCacheTime: 0,
-  
+
   async createGearItem(item) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Use cached max order if available and fresh (within 5 seconds)
     const now = Date.now()
     let newOrderIndex
-    
+
     if (this._maxOrderCache !== null && (now - this._maxOrderCacheTime) < 5000) {
       // Use cached value and increment
       this._maxOrderCache++
       newOrderIndex = this._maxOrderCache
     } else {
       // Get the maximum order_index for this user
-      const { data: maxOrderData } = await supabase
+      const { data: maxOrderData } = await supabaseClient
         .from('gear_items')
         .select('order_index')
         .eq('user_id', this.currentUser.id)
         .order('order_index', { ascending: false })
         .limit(1)
-      
+
       const maxOrder = maxOrderData?.[0]?.order_index ?? -1
       newOrderIndex = maxOrder + 1
       this._maxOrderCache = newOrderIndex
       this._maxOrderCacheTime = now
     }
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('gear_items')
       .insert([{
         id: item.id,
@@ -232,22 +268,22 @@ const SupabaseService = {
       }])
       .select()
       .maybeSingle()
-    
+
     if (error) throw error
     return data
   },
-  
+
   async updateGearItem(id, updates) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     let imageToSave = updates.image
-    
+
     // Handle image upload if base64 data is provided
     if (updates.image && updates.image.startsWith('data:')) {
       // For now, save base64 directly (can be changed to upload to storage later)
       imageToSave = updates.image
     }
-    
+
     // Filter and map fields to match database schema
     const dbUpdates = {
       category: updates.category,
@@ -264,114 +300,114 @@ const SupabaseService = {
       order_index: updates.order_index,
       updated_at: new Date().toISOString()
     }
-    
+
     // Remove undefined fields
     Object.keys(dbUpdates).forEach(key => {
       if (dbUpdates[key] === undefined) {
         delete dbUpdates[key]
       }
     })
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('gear_items')
       .update(dbUpdates)
       .eq('id', id)
       .eq('user_id', this.currentUser.id)
       .select()
       .maybeSingle()
-    
+
     if (error) throw error
     return data
   },
-  
+
   async deleteGearItem(id) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { error } = await supabase
+
+    const { error } = await supabaseClient
       .from('gear_items')
       .delete()
       .eq('id', id)
       .eq('user_id', this.currentUser.id)
-    
+
     if (error) throw error
   },
-  
+
   // ==================== GEAR CATALOG (Community Suggestions) ====================
-  
+
   async searchGearCatalog(query, brand = null, limit = 10) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .rpc('search_gear_catalog', {
         search_query: query || '',
         search_brand: brand || '',
         result_limit: limit
       })
-    
+
     if (error) {
       console.error('Gear catalog search error:', error)
       return []
     }
     return data || []
   },
-  
+
   async getGearSuggestionsByBrand(brand, limit = 20) {
     if (!brand) return []
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('gear_catalog')
       .select('*')
       .ilike('brand', `%${brand}%`)
       .order('usage_count', { ascending: false })
       .limit(limit)
-    
+
     if (error) {
       console.error('Gear suggestions error:', error)
       return []
     }
     return data || []
   },
-  
+
   async getModelSuggestions(brand, modelQuery = '', limit = 10) {
     if (!brand) return []
-    
-    let query = supabase
+
+    let query = supabaseClient
       .from('gear_catalog')
       .select('model, name, avg_weight, avg_price, avg_rating, usage_count')
       .ilike('brand', brand)
       .order('usage_count', { ascending: false })
       .limit(limit)
-    
+
     if (modelQuery) {
       query = query.ilike('model', `%${modelQuery}%`)
     }
-    
+
     const { data, error } = await query
-    
+
     if (error) {
       console.error('Model suggestions error:', error)
       return []
     }
     return data || []
   },
-  
+
   // ==================== CHECKLISTS ====================
-  
+
   async getAllChecklists() {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('checklists')
       .select('*')
       .eq('user_id', this.currentUser.id)
       .order('created_at', { ascending: false })
-    
+
     if (error) throw error
     return data || []
   },
-  
+
   async createChecklist(checklist) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('checklists')
       .insert([{
         id: checklist.id,
@@ -385,14 +421,14 @@ const SupabaseService = {
       }])
       .select()
       .maybeSingle()
-    
+
     if (error) throw error
     return data
   },
-  
+
   async updateChecklist(id, updates) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Map frontend fields to database fields and filter out read-only fields
     // Support both camelCase (from form) and snake_case (from database)
     const updateData = {
@@ -403,65 +439,65 @@ const SupabaseService = {
       end_date: updates.endDate || updates.end_date || null,
       updated_at: new Date().toISOString()
     }
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('checklists')
       .update(updateData)
       .eq('id', id)
       .eq('user_id', this.currentUser.id)
       .select()
       .maybeSingle()
-    
+
     if (error) throw error
     return data
   },
-  
+
   async deleteChecklist(id) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { error } = await supabase
+
+    const { error } = await supabaseClient
       .from('checklists')
       .delete()
       .eq('id', id)
       .eq('user_id', this.currentUser.id)
-    
+
     if (error) throw error
   },
-  
+
   // ==================== CATEGORY ORDER ====================
-  
+
   async getCategoryOrder() {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('category_order')
       .select('categories, sort_modes')
       .eq('user_id', this.currentUser.id)
       .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    
+
     if (error) throw error
-    
+
     if (!data) return null
-    
+
     return {
       categories: data.categories || [],
       sort_modes: data.sort_modes || {}
     }
   },
-  
+
   async saveCategoryOrder(categoryData, sortModes = {}) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // First, delete existing category order for this user
-    await supabase
+    await supabaseClient
       .from('category_order')
       .delete()
       .eq('user_id', this.currentUser.id)
-    
+
     // Then insert the new data
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('category_order')
       .insert({
         user_id: this.currentUser.id,
@@ -471,14 +507,14 @@ const SupabaseService = {
       })
       .select()
       .maybeSingle()
-    
+
     if (error) throw error
     return data
   },
 
   async saveItemsOrder(itemsOrder) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Group items by category and assign order_index within each category
     const categorizedItems = {}
     itemsOrder.forEach(item => {
@@ -488,19 +524,19 @@ const SupabaseService = {
       }
       categorizedItems[category].push(item)
     })
-    
+
     // Update order_index for items within each category
     for (const category of Object.keys(categorizedItems)) {
       const categoryItems = categorizedItems[category]
       for (let i = 0; i < categoryItems.length; i++) {
-        await supabase
+        await supabaseClient
           .from('gear_items')
           .update({ order_index: i })
           .eq('id', categoryItems[i].id)
           .eq('user_id', this.currentUser.id)
       }
     }
-    
+
     return true
   },
 
@@ -509,34 +545,34 @@ const SupabaseService = {
   async saveItems(items) {
     return this.saveItemsOrder(items)
   },
-  
+
   // ==================== STORAGE ====================
-  
+
   async uploadPhoto(itemId, photoDataUrl) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Convert base64 to blob
     const response = await fetch(photoDataUrl)
     const blob = await response.blob()
-    
+
     // Generate path: users/{userId}/{itemId}.jpg
     const filePath = `${this.currentUser.id}/${itemId}.jpg`
-    
+
     const { data, error } = await getSupabase().storage
       .from('gear-photos')
       .upload(filePath, blob, {
         contentType: 'image/jpeg',
         upsert: true
       })
-    
+
     if (error) throw error
     return filePath
   },
-  
+
   // Cache for signed URLs (valid for 1 hour, cache for 50 minutes)
   _urlCache: new Map(),
   _urlCacheExpiry: 50 * 60 * 1000, // 50 minutes in ms
-  
+
   async getPhotoUrl(imagePath) {
     if (!imagePath) return null;
 
@@ -565,34 +601,34 @@ const SupabaseService = {
         console.error('Error getting photo URL:', error, 'imagePath:', imagePath);
         return null;
       }
-      
+
       // Cache the URL
       this._urlCache.set(imagePath, {
         url: data.signedUrl,
         expiry: Date.now() + this._urlCacheExpiry
       })
-      
+
       return data.signedUrl;
     } catch (err) {
       console.error('Exception in getPhotoUrl:', err, 'imagePath:', imagePath);
       return null;
     }
   },
-  
+
   // Batch get photo URLs for multiple items
   async getPhotoUrlsBatch(imagePaths) {
     const results = {}
     const pathsToFetch = []
-    
+
     // Check cache first
     for (const path of imagePaths) {
       if (!path) continue
-      
+
       if (path.startsWith('data:') || path.startsWith('http')) {
         results[path] = path
         continue
       }
-      
+
       const cached = this._urlCache.get(path)
       if (cached && Date.now() < cached.expiry) {
         results[path] = cached.url
@@ -600,7 +636,7 @@ const SupabaseService = {
         pathsToFetch.push(path)
       }
     }
-    
+
     // Fetch remaining URLs in parallel (limited concurrency)
     if (pathsToFetch.length > 0) {
       const BATCH_SIZE = 10
@@ -613,63 +649,63 @@ const SupabaseService = {
                 .from('gear-photos')
                 .createSignedUrl(path, 3600)
               if (error) return { path, url: null }
-              
+
               this._urlCache.set(path, {
                 url: data.signedUrl,
                 expiry: Date.now() + this._urlCacheExpiry
               })
-              
+
               return { path, url: data.signedUrl }
             } catch {
               return { path, url: null }
             }
           })
         )
-        
+
         for (const { path, url } of batchResults) {
           results[path] = url
         }
       }
     }
-    
+
     return results
   },
-  
+
   async deletePhoto(imagePath) {
     if (!this.currentUser || !imagePath) return
-    
+
     const { error } = await getSupabase().storage
       .from('gear-photos')
       .remove([imagePath])
-    
+
     if (error) throw error
   },
-  
+
   // ==================== MIGRATION ====================
-  
+
   async migrateFromLocalStorage(localData = null) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // If no localData provided, read from localStorage
     if (!localData) {
       const itemsData = localStorage.getItem('allmygear.items')
       const checklistsData = localStorage.getItem('allmygear.checklists')
       const categoryOrderData = localStorage.getItem('allmygear.categoryOrder')
-      
+
       localData = {
         items: itemsData ? JSON.parse(itemsData) : [],
         checklists: checklistsData ? JSON.parse(checklistsData) : [],
         categoryOrder: categoryOrderData ? JSON.parse(categoryOrderData) : []
       }
     }
-    
+
     const results = {
       items: 0,
       checklists: 0,
       photos: 0,
       errors: []
     }
-    
+
     try {
       // Migrate gear items
       if (localData.items && localData.items.length > 0) {
@@ -677,14 +713,14 @@ const SupabaseService = {
           try {
             // Generate new UUID for Supabase
             const newId = crypto.randomUUID()
-            
+
             // Upload photo if exists
             let imagePath = null
             if (item.image) {
               imagePath = await this.uploadPhoto(newId, item.image)
               results.photos++
             }
-            
+
             // Create item in database with new UUID
             await this.createGearItem({
               ...item,
@@ -699,14 +735,14 @@ const SupabaseService = {
           }
         }
       }
-      
+
       // Migrate checklists
       if (localData.checklists && localData.checklists.length > 0) {
         for (const checklist of localData.checklists) {
           try {
             // Generate new UUID for checklist
             const newId = crypto.randomUUID()
-            
+
             await this.createChecklist({
               ...checklist,
               id: newId // Use new UUID instead of localStorage ID
@@ -718,7 +754,7 @@ const SupabaseService = {
           }
         }
       }
-      
+
       // Migrate category order
       if (localData.categoryOrder) {
         try {
@@ -727,26 +763,26 @@ const SupabaseService = {
           // Silently continue migration
         }
       }
-      
+
       // Clear localStorage after successful migration
       localStorage.removeItem('allmygear.items')
       localStorage.removeItem('allmygear.checklists')
       localStorage.removeItem('allmygear.categoryOrder')
-      
+
       return results
-      
+
     } catch (err) {
       console.error('Migration failed:', err)
       throw err
     }
   },
-  
+
   // ==================== REALTIME SYNC ====================
-  
+
   subscribeToGearItems(callback) {
     if (!this.currentUser) return null
-    
-    return supabase
+
+    return supabaseClient
       .channel('gear_items_changes')
       .on(
         'postgres_changes',
@@ -760,11 +796,11 @@ const SupabaseService = {
       )
       .subscribe()
   },
-  
+
   subscribeToChecklists(callback) {
     if (!this.currentUser) return null
-    
-    return supabase
+
+    return supabaseClient
       .channel('checklists_changes')
       .on(
         'postgres_changes',
@@ -780,23 +816,23 @@ const SupabaseService = {
   },
 
   // ==================== CLEANUP ====================
-  
+
   async removeDuplicateGearItems() {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Get all items for current user
-    const { data: items, error } = await supabase
+    const { data: items, error } = await supabaseClient
       .from('gear_items')
       .select('*')
       .eq('user_id', this.currentUser.id)
       .order('created_at', { ascending: true }) // Keep oldest
-    
+
     if (error) throw error
-    
+
     // Group by name + brand + model to find duplicates
     const seen = new Map()
     const duplicatesToDelete = []
-    
+
     items.forEach(item => {
       const key = `${item.name}-${item.brand}-${item.model}`
       if (seen.has(key)) {
@@ -807,36 +843,36 @@ const SupabaseService = {
         seen.set(key, item.id)
       }
     })
-    
+
     // Delete duplicates
     if (duplicatesToDelete.length > 0) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseClient
         .from('gear_items')
         .delete()
         .in('id', duplicatesToDelete)
-      
+
       if (deleteError) throw deleteError
     }
-    
+
     return duplicatesToDelete.length
   },
-  
+
   async removeDuplicateChecklists() {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Get all checklists for current user
-    const { data: checklists, error } = await supabase
+    const { data: checklists, error } = await supabaseClient
       .from('checklists')
       .select('*')
       .eq('user_id', this.currentUser.id)
       .order('created_at', { ascending: true }) // Keep oldest
-    
+
     if (error) throw error
-    
+
     // Group by name to find duplicates
     const seen = new Map()
     const duplicatesToDelete = []
-    
+
     checklists.forEach(checklist => {
       const key = checklist.name
       if (seen.has(key)) {
@@ -847,52 +883,52 @@ const SupabaseService = {
         seen.set(key, checklist.id)
       }
     })
-    
+
     // Delete duplicates
     if (duplicatesToDelete.length > 0) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseClient
         .from('checklists')
         .delete()
         .in('id', duplicatesToDelete)
-      
+
       if (deleteError) throw deleteError
     }
-    
+
     return duplicatesToDelete.length
   },
 
   // ==================== DELETE ALL DATA ====================
-  
+
   async deleteAllUserData() {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     const userId = this.currentUser.id
-    
+
     try {
       // Delete all gear items
-      const { error: itemsError } = await supabase
+      const { error: itemsError } = await supabaseClient
         .from('gear_items')
         .delete()
         .eq('user_id', userId)
-      
+
       if (itemsError) throw itemsError
-      
+
       // Delete all checklists
-      const { error: checklistsError } = await supabase
+      const { error: checklistsError } = await supabaseClient
         .from('checklists')
         .delete()
         .eq('user_id', userId)
-      
+
       if (checklistsError) throw checklistsError
-      
+
       // Delete category order
-      const { error: categoryError } = await supabase
+      const { error: categoryError } = await supabaseClient
         .from('category_order')
         .delete()
         .eq('user_id', userId)
-      
+
       if (categoryError) throw categoryError
-      
+
       return true
     } catch (error) {
       console.error('Error deleting all user data:', error)
@@ -915,7 +951,7 @@ const SupabaseService = {
       }
 
       // 2) Update gear_items rows: set category 'kitchen' -> 'Cooking'
-      const { data: updateData, error: updateError } = await supabase
+      const { data: updateData, error: updateError } = await supabaseClient
         .from('gear_items')
         .update({ category: 'Cooking' })
         .eq('user_id', this.currentUser.id)
@@ -949,16 +985,16 @@ const SupabaseService = {
   },
 
   // ==================== SHARING ====================
-  
+
   // Create a share link for a gear item
   async createShareLink(itemId, item) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Generate unique share code
     const shareCode = this.generateShareCode()
-    
+
     // Create share record (item data passed from client to avoid extra DB query)
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('shared_items')
       .insert([{
         share_code: shareCode,
@@ -980,33 +1016,33 @@ const SupabaseService = {
       }])
       .select()
       .single()
-    
+
     if (error) throw error
     return { shareCode, shareUrl: `${window.location.origin}${window.location.pathname}?share=${shareCode}` }
   },
-  
+
   // Get shared item by code (no auth required)
   async getSharedItem(shareCode) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('shared_items')
       .select('*')
       .eq('share_code', shareCode)
       .single()
-    
+
     if (error) throw error
     if (!data) throw new Error('Shared item not found')
-    
+
     // Check if expired
     if (new Date(data.expires_at) < new Date()) {
       throw new Error('Share link has expired')
     }
-    
+
     // Get image URL if exists
     let imageUrl = null
     if (data.item_data.image_path) {
       imageUrl = await this.getPhotoUrl(data.item_data.image_path)
     }
-    
+
     return {
       ...data.item_data,
       image: imageUrl,
@@ -1014,19 +1050,19 @@ const SupabaseService = {
       ownerId: data.owner_id
     }
   },
-  
+
   // Save shared item to user's collection
   async saveSharedItem(shareCode) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Get the shared item
     const sharedItem = await this.getSharedItem(shareCode)
-    
+
     // Check if user is trying to save their own item
     if (sharedItem.ownerId === this.currentUser.id) {
       throw new Error('You already own this item')
     }
-    
+
     // Create new item with copied data
     const newItem = {
       id: crypto.randomUUID(),
@@ -1041,11 +1077,11 @@ const SupabaseService = {
       image: sharedItem.image_path || null, // Will be copied as image_path
       created: Date.now()
     }
-    
+
     await this.createGearItem(newItem)
     return newItem
   },
-  
+
   // Generate random share code
   generateShareCode() {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
@@ -1055,26 +1091,26 @@ const SupabaseService = {
     }
     return code
   },
-  
+
   // ==================== STORAGES ====================
-  
+
   async getAllStorages() {
     if (!this.currentUser) return []
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('storages')
       .select('*')
       .eq('user_id', this.currentUser.id)
       .order('name', { ascending: true })
-    
+
     if (error) throw error
     return data || []
   },
-  
+
   async createStorage(name) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('storages')
       .insert({
         user_id: this.currentUser.id,
@@ -1082,15 +1118,15 @@ const SupabaseService = {
       })
       .select()
       .single()
-    
+
     if (error) throw error
     return data
   },
-  
+
   async updateStorage(id, name) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { data, error } = await supabase
+
+    const { data, error } = await supabaseClient
       .from('storages')
       .update({
         name: name.trim(),
@@ -1100,32 +1136,32 @@ const SupabaseService = {
       .eq('user_id', this.currentUser.id)
       .select()
       .single()
-    
+
     if (error) throw error
     return data
   },
-  
+
   async deleteStorage(id) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
-    const { error } = await supabase
+
+    const { error } = await supabaseClient
       .from('storages')
       .delete()
       .eq('id', id)
       .eq('user_id', this.currentUser.id)
-    
+
     if (error) throw error
   },
 
   // ==================== CHECKLIST SHARING ====================
-  
+
   // Create a share link for a checklist
   async createChecklistShare(checklistId, checklist) {
     if (!this.currentUser) throw new Error('Not authenticated')
-    
+
     // Generate unique share code
     const shareCode = this.generateShareCode()
-    
+
     // Prepare checklist data (passed from client to avoid DB query)
     const checklistData = {
       name: checklist.name,
@@ -1135,9 +1171,9 @@ const SupabaseService = {
       tags: checklist.tags,
       items: checklist.items || []
     }
-    
+
     // Create share record (reusing shared_items table with checklist_id field)
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('shared_items')
       .insert([{
         share_code: shareCode,
@@ -1149,30 +1185,30 @@ const SupabaseService = {
       }])
       .select()
       .single()
-    
+
     if (error) throw error
-    return { 
-      shareCode, 
-      shareUrl: `${window.location.origin}${window.location.pathname}?checklist=${shareCode}` 
+    return {
+      shareCode,
+      shareUrl: `${window.location.origin}${window.location.pathname}?checklist=${shareCode}`
     }
   },
-  
+
   // Get shared checklist by code (no auth required)
   async getSharedChecklist(shareCode) {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from('shared_items')
       .select('*')
       .eq('share_code', shareCode)
       .single()
-    
+
     if (error) throw error
     if (!data) throw new Error('Shared checklist not found')
-    
+
     // Check if expired
     if (new Date(data.expires_at) < new Date()) {
       throw new Error('Share link has expired')
     }
-    
+
     // Load images for items
     const checklistData = data.item_data
     if (checklistData.items) {
@@ -1182,7 +1218,7 @@ const SupabaseService = {
         }
       }
     }
-    
+
     return {
       ...checklistData,
       shareCode: data.share_code,
@@ -1190,4 +1226,3 @@ const SupabaseService = {
     }
   }
 }
-

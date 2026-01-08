@@ -4,38 +4,58 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=5" />
   <title>All My Gear</title>
-  
+
   <!-- Force HTTPS redirect -->
   <script>
     if (location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
       location.replace('https:' + window.location.href.substring(window.location.protocol.length));
     }
   </script>
-  
+
   <!-- Content Security Policy to prevent ad injection -->
   <meta http-equiv="Permissions-Policy" content="clipboard-write=(self)">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://*.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://*.supabase.co; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://www.unsplash.com https://api.unsplash.com https://images.unsplash.com; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'none'; object-src 'none'; form-action 'self' https://*.supabase.co;">
-  
+
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net http://82.146.35.60:8000 https://82.146.35.60:8443 https://*.supabase.co;
+                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+                 font-src 'self' https://fonts.gstatic.com;
+                 img-src 'self' data: blob: http://82.146.35.60:8000 https://82.146.35.60:8443 https://*.supabase.co;
+                 connect-src 'self' http://82.146.35.60:8000 https://82.146.35.60:8443 https://*.supabase.co wss://*.supabase.co https://www.unsplash.com https://api.unsplash.com https://images.unsplash.com;
+                 worker-src 'self' blob:;
+                 child-src 'self' blob:;
+                 frame-src 'none';
+                 object-src 'none';
+                 form-action 'self' http://82.146.35.60:8000 https://82.146.35.60:8443 https://*.supabase.co;">
+
   <!-- Favicon and app icons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="img/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
-  
+
   <!-- Preconnect for faster font and API loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://ezsurtlznvwsncszfckj.supabase.co">
   <link rel="dns-prefetch" href="https://cdn.jsdelivr.net">
-  <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Outfit:wght@400&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Outfit:wght@400&family=Manrope:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style/style.css">
+
   <!-- HEIC to JPEG converter for iPhone photos -->
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<!--  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>-->
+  <script src="js/heic2any.min.js"></script>
+
   <!-- Supabase JS SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabase-config.js"></script>
-  <script src="supabase-service.js"></script>
+<!--  <script src="lib/supabase.min.js"></script>-->
+
+  <script src="js/supabase-config.js"></script>
+  <script src="js/supabase-service.js"></script>
+<!--  <script src="js/app.js"></script>-->
 </head>
+
 <body>
   <!-- Loading overlay -->
   <div id="appLoader" class="app-loader">
@@ -67,7 +87,7 @@
     </div>
     <div class="header-center">
       <a class="brand" href="#" aria-label="ALLMYGEAR">
-        <img src="AMG_icon_white.svg" alt="ALLMYGEAR logo" class="logo">
+        <img src="img/AMG_icon_white.svg" alt="ALLMYGEAR logo" class="logo">
       </a>
       <p class="subtitle">Create handy gear lists for your trips</p>
     </div>
@@ -95,7 +115,7 @@
         <!-- Gear cards will be inserted here -->
       </div>
     </section>
-    
+
     <section class="tab-content" id="checklistSection">
       <div class="cards" id="checklistCards">
         <!-- Checklist cards will be inserted here -->
@@ -276,7 +296,7 @@
           </svg>
         </button>
       </div>
-      
+
       <div class="checklist-modal-body">
         <form id="checklistForm" class="checklist-form">
           <!-- Basic Info Section -->
@@ -336,7 +356,7 @@
           </div>
         </form>
       </div>
-      
+
       <div class="checklist-modal-footer">
         <button id="cancelChecklistBtn" type="button" class="btn-secondary">Cancel</button>
         <button id="saveChecklistBtn" type="submit" class="btn-primary">Create Checklist</button>
@@ -569,7 +589,7 @@
             </button>
           </div>
           <p id="shareCopySuccess" class="share-copy-success" style="display:none;">Link copied to clipboard!</p>
-          
+
           <div class="share-messengers">
             <p class="share-messengers-title">Share via:</p>
             <div class="share-messengers-buttons">
@@ -595,7 +615,7 @@
               </button>
             </div>
           </div>
-          
+
           <p class="share-expiry">Link expires in 30 days</p>
         </div>
       </div>
@@ -634,7 +654,7 @@
             </button>
           </div>
           <p id="shareChecklistCopySuccess" class="share-copy-success" style="display:none;">Link copied to clipboard!</p>
-          
+
           <div class="share-messengers">
             <p class="share-messengers-title">Share via:</p>
             <div class="share-messengers-buttons">
@@ -660,7 +680,7 @@
               </button>
             </div>
           </div>
-          
+
           <p class="share-expiry">Link expires in 30 days</p>
         </div>
       </div>
@@ -787,7 +807,7 @@
             </button>
           </div>
         </div>
-        
+
         <div id="storagesList" class="storages-list">
           <!-- Populated by JS -->
         </div>
@@ -834,6 +854,7 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="js/app.js"></script>
 </body>
+
 </html>
