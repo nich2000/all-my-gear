@@ -24,16 +24,23 @@ Files
 
 If you want, I can add JSON import/export, a printable view, cloud sync, or switch to storing images externally.
 
+nano /etc/ssh/sshd_config
+Port 5678
+
+ssh-copy-id -p 5678 root@37.230.113.213
+
+ssh -p 5678 root@37.230.113.213
+ssh -p 5678 root@all-my-gear.pro
+
 apt update
 apt upgrade
 
+apt install fail2ban certbot
 apt install docker.io
-apt install docker-compose-plugin
-apt install certbot
-systemctl start docker
-systemctl enable docker
+https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
 
-https://supabase.com/docs/reference/javascript/introduction
+systemctl enable docker
+systemctl start docker
 
 https://supabase.com/docs/guides/self-hosting
 
@@ -46,12 +53,6 @@ docker compose pull
 
 sh ./utils/generate-keys.sh
 
-openssl rand -base64 32
-
 docker compose up -d
 
-http://82.146.35.60:8000
-
-https://82.146.35.60:8443
-
-http://82.146.35.60:4000
+docker pull nichalterego/all-my-gear:latest
