@@ -11,7 +11,6 @@ build:
 	go build -o ./bin/app ./cmd/main.go
 
 docker_build:
-	#docker buildx build -t nichalterego/all-my-gear:latest --platform=linux/arm64 .
 	docker buildx build -t nichalterego/all-my-gear:latest --platform=linux/amd64 .
 
 docker_push:

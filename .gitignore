@@ -3,4 +3,5 @@
 *.log
 .idea
 bin
-.env
+supabase/.env.old
+supabase/.env.bak

@@ -5641,7 +5641,7 @@
     await loadFromSupabase()
 
     // Setup realtime subscriptions
-    setupRealtimeSync()
+    // setupRealtimeSync()
 
     // Hide loader when done
     hideLoader()
@@ -6890,7 +6890,10 @@
   // Add error handlers to all images
   document.addEventListener('error', (e) => {
     if (e.target.tagName === 'IMG' && e.target.classList.contains('thumb')) {
-      handleImageError(e.target)
+      setTimeout(() => {
+        console.log("handleImageError")
+        handleImageError(e.target)
+      }, 1000);
     }
   }, true)
 })()

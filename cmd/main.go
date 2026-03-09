@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/joho/godotenv"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/joho/godotenv"
 )
 
 var wwwDir string
