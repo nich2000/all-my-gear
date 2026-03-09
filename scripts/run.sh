@@ -14,5 +14,5 @@ docker run \
   -e CERT_FILE="/etc/ssl/certs/cert.pem" \
   -e KEY_FILE="/etc/ssl/certs/key.pem" \
   -e SUPABASE_URL="https://all-my-gear.pro" \
-  -e SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzczMDYyNDMzLCJleHAiOjE5MzA3NDI0MzN9.US9XQ0jUYjwzaTisIHK0poFft4GA4sUwZKKE6NOWzKE" \
+  -e SUPABASE_ANON_KEY="" \
 nichalterego/all-my-gear:latest
