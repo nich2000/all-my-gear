@@ -13,21 +13,7 @@
     }
   </script>
 
-  <!-- Content Security Policy to prevent ad injection -->
   <meta http-equiv="Permissions-Policy" content="clipboard-write=(self)">
-
-  <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self';
-                 script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://all-my-gear.pro:8443 https://*.supabase.co;
-                 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-                 font-src 'self' https://fonts.gstatic.com;
-                 img-src 'self' data: blob: http://localhost:8000 http://127.0.0.1:8000 https://all-my-gear.pro:8443 https://*.supabase.co;
-                 connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://all-my-gear.pro:8443 https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://www.unsplash.com https://api.unsplash.com https://images.unsplash.com;
-                 worker-src 'self' blob:;
-                 child-src 'self' blob:;
-                 frame-src 'none';
-                 object-src 'none';
-                 form-action 'self' https://all-my-gear.pro:8443 https://*.supabase.co;">
 
   <!-- Favicon and app icons -->
   <link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32x32.png">

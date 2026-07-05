@@ -97,7 +97,7 @@ These require live browser checks with console and network logs. Static code ins
 1. Resolve the remaining `gear_catalog` / `search_gear_catalog` contract with migrations, compatibility objects or frontend cleanup.
 2. Verify RLS policies for all user-owned tables after applying `supabase/migrations` to the live project.
 3. Verify public-share read policy behavior for `shared_items` by `share_code` and expiry semantics.
-4. Provision the `gear-photos` bucket and verify existing Storage policies against the client upload path `{userId}/{itemId}.jpg`, including whether shared items can expose signed URLs without login.
+4. Provision the `gear-photos` bucket and verify existing Storage policies against the client upload path `<gear_item_id>/image.jpg`, including whether shared items can expose signed URLs without login.
 
 ### P2: UX polish
 

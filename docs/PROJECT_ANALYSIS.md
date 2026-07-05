@@ -44,6 +44,7 @@ The project is usable as a small self-hosted product, and most of the public sch
 - Frontend does not require a build system.
 - Supabase handles auth, database API, storage and realtime, reducing custom backend code.
 - Docker and nginx production path are already represented in the repository.
+- Production network exposure is narrowed through nginx: the app and Supabase public ports bind to localhost, while nginx owns TLS and security headers.
 - Client-side code has practical performance optimizations: lazy checklist loading, debounced realtime handling and signed URL caching.
 
 ## Main Risks And Gaps
@@ -64,7 +65,7 @@ The client uses:
 
 `gear_catalog` and `search_gear_catalog` are not yet defined in `supabase/migrations`. The newer normalized catalogs `categories`, `outdoor_brands` and `outdoor_activities` do have migrations, so the remaining work is either a compatibility table/RPC for the old suggestion API or removal of the old calls from `www/js/supabase-service.js`.
 
-`gear-photos` policies are now defined in `202607030005_subscription_visibility_access.sql`, but the repository still does not create the Storage bucket. There is also a path-contract risk to verify before rollout: the client uploads `{userId}/{itemId}.jpg`, while the current SQL policies inspect the first path segment as a gear item id.
+`gear-photos` policies are now defined in `202607030005_subscription_visibility_access.sql`, but the repository still does not create the Storage bucket. The current client upload path is `<gear_item_id>/image.jpg`, matching the Storage policy convention that inspects the first path segment as the gear item id.
 
 ### 3. Exported row files are snapshots, not migrations
 
@@ -76,7 +77,7 @@ The `sql/*_rows.sql` files are exported rows. Schema changes should be made thro
 
 ### 5. Operational scripts require manual secret handling
 
-`scripts/run.sh` has the correct shape but leaves `SUPABASE_ANON_KEY` empty. Production deployment depends on manual substitution and external Supabase `.env` values.
+`scripts/run.sh` has the correct production shape: the app binds to `127.0.0.1:8080`, but `SUPABASE_ANON_KEY` is intentionally empty. Production deployment depends on manual substitution and external Supabase `.env` values.
 
 ### 6. Documentation was stale
 

@@ -56,7 +56,7 @@ Review `scripts/run.sh` before running in production:
 
 - Fill `SUPABASE_ANON_KEY`.
 - Confirm `SUPABASE_URL`.
-- Confirm port mapping `8080:8080`.
+- Confirm port mapping `127.0.0.1:8080:8080`; the app should not be exposed directly on a public interface.
 - Confirm `WWW_USE_SSL=false` if TLS is terminated by nginx.
 
 Stop:
@@ -86,6 +86,7 @@ Before production use:
 - Confirm `SUPABASE_PUBLIC_URL`, `API_EXTERNAL_URL`, `SITE_URL` and redirect URLs match the public domain.
 - Configure SMTP if email signup, confirmation or password recovery is enabled.
 - Verify OAuth provider callback URLs if social login is enabled.
+- Confirm Supabase public ports in `supabase/docker-compose.yml` are bound to `127.0.0.1` when nginx is the public entrypoint.
 
 ## nginx
 
@@ -100,6 +101,8 @@ Expected routing:
 | `/rest` | `http://127.0.0.1:8000` |
 | `/storage` | `http://127.0.0.1:8000` |
 | `/realtime` | `http://127.0.0.1:8000` |
+
+The nginx site also owns production security headers. CSP should be changed in `nginx/all-my-gear`, not by adding a second meta policy to `www/index.html`.
 
 Validation commands on the server:
 
@@ -150,9 +153,10 @@ curl -I https://all-my-gear.pro/
 curl -I https://all-my-gear.pro/js/supabase-config.js
 ```
 
-8. Check Supabase routes:
+8. Check CSP and Supabase routes:
 
 ```bash
+curl -I https://all-my-gear.pro/ | grep -i content-security-policy
 curl -I https://all-my-gear.pro/auth/v1/health
 ```
 
@@ -184,7 +188,7 @@ Check required environment variables:
 Check:
 
 - Supabase SDK from jsDelivr is reachable.
-- CSP allows `https://cdn.jsdelivr.net`.
+- CSP `script-src` allows `https://cdn.jsdelivr.net`.
 - `/js/supabase-config.js` returns valid JavaScript with rendered values.
 
 ### Data loads but users see wrong or excessive data

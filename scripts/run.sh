@@ -4,7 +4,7 @@ docker run \
   --platform linux/amd64 \
   --name all-my-gear \
   -d --restart always \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -v /etc/letsencrypt/live/all-my-gear.pro/fullchain.pem:/etc/ssl/certs/cert.pem:ro \
   -v /etc/letsencrypt/live/all-my-gear.pro/privkey.pem:/etc/ssl/certs/key.pem:ro \
   -e TZ=Europe/Moscow \

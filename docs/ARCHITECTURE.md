@@ -5,8 +5,8 @@
 ```mermaid
 flowchart LR
   User["Browser"] --> Nginx["nginx TLS proxy"]
-  Nginx --> App["Go app server :8080"]
-  Nginx --> Kong["Supabase Kong :8000"]
+  Nginx --> App["Go app server 127.0.0.1:8080"]
+  Nginx --> Kong["Supabase Kong 127.0.0.1:8000"]
   App --> Static["www static files"]
   User --> SDK["Supabase JS SDK"]
   SDK --> Kong
@@ -43,8 +43,9 @@ Responsibilities:
 
 - Load styles, HEIC converter, Supabase SDK, rendered Supabase config and app scripts.
 - Define the application DOM: topbar, tabs, gear cards, checklist cards and modals.
-- Set a Content Security Policy that allows Supabase, jsDelivr, fonts and selected image/API domains.
 - Force HTTPS outside localhost.
+
+The HTML shell does not define a CSP meta tag. Production CSP is an HTTP response header owned by nginx.
 
 ### Main Frontend Application
 
@@ -104,7 +105,7 @@ Responsibilities:
 
 1. User selects a photo.
 2. Client processes the image and calls `SupabaseService.uploadPhoto`.
-3. File is uploaded to `gear-photos` under `{userId}/{itemId}.jpg`.
+3. File is uploaded to `gear-photos` under `<gear_item_id>/image.jpg`.
 4. `gear_items.image_path` stores the path.
 5. On render, the client creates signed URLs and caches them for 50 minutes.
 
@@ -129,12 +130,13 @@ Responsibilities:
 
 The checked-in production shape is:
 
-- App container: `nichalterego/all-my-gear:latest`, host port `8080`.
-- Supabase stack: `supabase/docker-compose.yml`, Kong on host port `8000`.
+- App container: `nichalterego/all-my-gear:latest`, bound to `127.0.0.1:8080`.
+- Supabase stack: `supabase/docker-compose.yml`, Kong bound to `127.0.0.1:8000` and `127.0.0.1:8443`.
 - nginx:
   - `/` -> `127.0.0.1:8080`
   - `/auth`, `/rest`, `/storage`, `/realtime` -> `127.0.0.1:8000`
 - TLS certificates from Let's Encrypt.
+- Security headers, including Content Security Policy, are served by nginx. The current CSP allows app scripts/styles/fonts, Supabase HTTP/WebSocket endpoints, local Supabase development endpoints, data/blob image previews and blob workers; unused Unsplash and jsDelivr `connect-src` permissions are intentionally absent.
 
 ## Architectural Constraints
 

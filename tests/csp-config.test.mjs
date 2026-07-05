@@ -3,11 +3,50 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const indexHtml = readFileSync(new URL('../www/index.html', import.meta.url), 'utf8')
+const nginxConfig = readFileSync(new URL('../nginx/all-my-gear', import.meta.url), 'utf8')
 const appJs = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8')
 
+const cspHeader = nginxConfig.match(/add_header Content-Security-Policy "([^"]+)"/)?.[1] || ''
+
+function getDirective(policy, name) {
+  return policy
+    .split(';')
+    .map(part => part.trim())
+    .find(part => part.startsWith(`${name} `)) || ''
+}
+
+test('content security policy is served only as an nginx header', () => {
+  assert.doesNotMatch(indexHtml, /http-equiv="Content-Security-Policy"/)
+  assert.match(cspHeader, /default-src 'self'/)
+})
+
 test('content security policy allows local Supabase storage images', () => {
-  assert.match(indexHtml, /img-src[^;]*http:\/\/localhost:8000/)
-  assert.match(indexHtml, /img-src[^;]*http:\/\/127\.0\.0\.1:8000/)
+  const imgSrc = getDirective(cspHeader, 'img-src')
+  assert.match(imgSrc, /http:\/\/localhost:8000/)
+  assert.match(imgSrc, /http:\/\/127\.0\.0\.1:8000/)
+})
+
+test('content security policy keeps connect-src limited to active runtime endpoints', () => {
+  const connectSrc = getDirective(cspHeader, 'connect-src')
+  assert.match(connectSrc, /http:\/\/localhost:8000/)
+  assert.match(connectSrc, /http:\/\/127\.0\.0\.1:8000/)
+  assert.match(connectSrc, /ws:\/\/localhost:8000/)
+  assert.match(connectSrc, /ws:\/\/127\.0\.0\.1:8000/)
+  assert.match(connectSrc, /https:\/\/\*\.supabase\.co/)
+  assert.match(connectSrc, /wss:\/\/\*\.supabase\.co/)
+  assert.doesNotMatch(connectSrc, /cdn\.jsdelivr\.net/)
+  assert.doesNotMatch(connectSrc, /unsplash\.com/)
+  assert.doesNotMatch(connectSrc, /all-my-gear\.pro:8443/)
+})
+
+test('content security policy keeps img-src limited to active image origins', () => {
+  const imgSrc = getDirective(cspHeader, 'img-src')
+  assert.match(imgSrc, /'self'/)
+  assert.match(imgSrc, /data:/)
+  assert.match(imgSrc, /blob:/)
+  assert.match(imgSrc, /https:\/\/\*\.supabase\.co/)
+  assert.doesNotMatch(imgSrc, /unsplash\.com/)
+  assert.doesNotMatch(imgSrc, /all-my-gear\.pro:8443/)
 })
 
 test('manage storage form labels and explains every field', () => {

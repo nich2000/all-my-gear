@@ -13,7 +13,7 @@ Browser -> Go static/config server -> Supabase JS SDK -> Supabase Auth/PostgREST
 ## Architecture
 
 - `cmd/main.go`: Go server. Loads `.env`, validates runtime configuration, serves `www/`, and renders `www/js/supabase-config.js` from environment variables.
-- `www/index.html`: SPA shell, CSP, modals, tabs and script loading.
+- `www/index.html`: SPA shell, modals, tabs and script loading. Production CSP lives in `nginx/all-my-gear`.
 - `www/js/app.js`: Main UI/state/workflow file. It is intentionally framework-free but very large, so keep changes scoped.
 - `www/js/supabase-service.js`: Supabase wrapper for auth, CRUD, storage, sharing and realtime subscriptions.
 - `sql/allmygear.sql`: Schema snapshot. Treat it as documentation/snapshot until proper migrations exist.
@@ -56,7 +56,7 @@ The browser uses the anon key, so security must be enforced by Supabase RLS and 
 
 - Ordered schema changes live in `supabase/migrations`; `sql/*.sql` files are legacy snapshots or data exports unless a task explicitly says otherwise.
 - `gear_catalog` and `search_gear_catalog` are still referenced by JavaScript but are not defined by the migrations.
-- `gear-photos` Storage policies exist in `202607030005_subscription_visibility_access.sql`, but the bucket provisioning and object path policy must be verified against the client upload path `{userId}/{itemId}.jpg`.
+- `gear-photos` Storage policies exist in `202607030005_subscription_visibility_access.sql`, but the bucket itself still needs explicit provisioning. The client upload path is `<gear_item_id>/image.jpg`.
 - `www/js/app.js` mixes many workflows in one file; avoid unrelated refactors.
 
 ## Development Workflow
@@ -96,6 +96,7 @@ make docker_build
 - Keep changes minimal and scoped to the requested behavior.
 - Prefer existing vanilla JS patterns unless a larger refactor is explicitly requested.
 - Do not assume direct `www/index.html` file opening is supported; the Supabase config script is rendered by Go.
+- Do not add a second CSP meta tag to `www/index.html`; update the nginx `Content-Security-Policy` header and `tests/csp-config.test.mjs` together.
 - Before data-access changes, inspect both `www/js/supabase-service.js` and `sql/allmygear.sql`.
 - Before production/security claims, verify live Supabase RLS and Storage policies, not only frontend filters.
 - For docs, keep README short and put details in `docs/`.

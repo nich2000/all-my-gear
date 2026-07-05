@@ -25,7 +25,7 @@ Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 | Path | Purpose |
 | --- | --- |
 | `cmd/main.go` | Go HTTP server. Serves `www/` and renders `www/js/supabase-config.js` from environment variables. |
-| `www/index.html` | SPA HTML shell, CSP, auth/profile/share/checklist modals and script loading. |
+| `www/index.html` | SPA HTML shell, auth/profile/share/checklist modals and script loading. CSP is served by nginx in production. |
 | `www/js/app.js` | Main UI state, rendering, forms, checklists, sharing, image handling and realtime wiring. |
 | `www/js/supabase-service.js` | Supabase client wrapper for auth, database, storage, sharing and subscriptions. |
 | `www/style/style.css` | Application styles. |
@@ -96,7 +96,7 @@ Run the published image using the helper:
 ./scripts/run.sh
 ```
 
-Before using `scripts/run.sh`, fill `SUPABASE_ANON_KEY` and confirm `SUPABASE_URL` matches the public Supabase endpoint. The script maps the app on host port `8080`.
+Before using `scripts/run.sh`, fill `SUPABASE_ANON_KEY` and confirm `SUPABASE_URL` matches the public Supabase endpoint. The script binds the app to `127.0.0.1:8080` so nginx remains the public entrypoint.
 
 ## Production Shape
 
@@ -105,7 +105,7 @@ The checked-in nginx config routes:
 - `/` to the Go app on `127.0.0.1:8080`
 - `/auth`, `/rest`, `/storage`, `/realtime` to Supabase Kong on `127.0.0.1:8000`
 
-TLS is terminated by nginx with Let's Encrypt certificates for `all-my-gear.pro`.
+TLS is terminated by nginx with Let's Encrypt certificates for `all-my-gear.pro`. Production security headers, including Content Security Policy, are also served by nginx. The HTML shell intentionally does not carry a second CSP meta tag.
 
 ## Documentation
 
