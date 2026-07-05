@@ -23,7 +23,7 @@ Important columns:
 | `price` | `numeric` | Price in RUB. |
 | `year` | `integer` | Purchase year. |
 | `rating` | `integer` | 0 to 5 satisfaction rating in the UI. |
-| `image_path` | `text` | Either Storage path or legacy/base64-compatible value. |
+| `image_path` | `text` | Supabase Storage object path, currently `<gear_item_id>/image.jpg`. Base64 data URLs are legacy data and must be migrated out of this column. |
 | `order_index` | `integer` | Item ordering. |
 | `comment` | `text` | User note. |
 | `storage_id` | `uuid` | Optional storage location. |
@@ -249,7 +249,7 @@ Important columns:
 | `item_id` | `uuid` | Source item id when sharing an item. |
 | `checklist_id` | `uuid` | Source checklist id when sharing a checklist. |
 | `owner_id` | `uuid` | Sharing user. |
-| `item_data` | `jsonb` | Copied item or checklist payload. |
+| `item_data` | `jsonb` | Copied item or checklist payload. Image fields inside this JSON must store Storage object paths, not base64 data URLs. |
 | `expires_at` | `timestamptz` | Link expiry. Client uses 30 days. |
 
 Client access:
@@ -260,7 +260,7 @@ Client access:
 - `createChecklistShare`
 - `getSharedChecklist`
 
-Security note: owners can manage their shares, and anonymous users can read non-expired share rows. `item_id` and `checklist_id` are mutually exclusive and cascade-delete share rows when the source object is deleted.
+Security note: owners can manage their shares, and anonymous users can read non-expired share rows. `item_id` and `checklist_id` are mutually exclusive and cascade-delete share rows when the source object is deleted. Historical share snapshots can be normalized with `202607050009_normalize_shared_item_image_paths.sql`, which replaces embedded base64 image payloads with canonical `gear_items.image_path` values.
 
 ## Runtime Objects With Remaining Provisioning Gaps
 
@@ -270,11 +270,11 @@ The frontend also depends on:
 | --- | --- | --- |
 | `gear_catalog` table/view | legacy brand/model suggestions | Selectable by authenticated or anonymous users depending on product policy, or replaced by normalized catalog calls. |
 | `search_gear_catalog` RPC | legacy search suggestions | Returns catalog matches for query, brand and limit, or is removed after frontend cleanup. |
-| `gear-photos` Storage bucket | item/avatar photos | Bucket must exist; upload/remove by owner; signed URL read for allowed objects. |
+| `gear-photos` Storage bucket | item/avatar photos | Bucket must exist; upload/remove by owner; signed URL read for allowed objects. Gear item photos use `<gear_item_id>/image.jpg`. |
 
 The normalized catalogs `categories`, `outdoor_brands` and `outdoor_activities` are covered by migrations. The old `gear_catalog` / `search_gear_catalog` suggestion API is still referenced by `www/js/supabase-service.js` and needs either compatibility database objects or code cleanup.
 
-Storage policies for `gear-photos` are defined in `202607030005_subscription_visibility_access.sql`, but bucket creation is still an infrastructure step. Before production rollout, verify the object path contract: the client writes `{userId}/{itemId}.jpg`, while the current Storage policies inspect the first path segment as a gear item id.
+Storage policies for `gear-photos` are defined in `202607030005_subscription_visibility_access.sql`, but bucket creation is still an infrastructure step. Before production rollout, verify the object path contract: the client writes `<gear_item_id>/image.jpg`, and the current Storage policies inspect the first path segment as a gear item id.
 
 ## Browser Local Storage Keys
 
@@ -297,4 +297,4 @@ Before production changes, verify these Supabase policies directly in the live p
 - `category_order`: authenticated users can select/insert/update/delete only their own rows.
 - `storages`: users can select rows they own, public rows and rows shared with them; only owners can mutate.
 - `shared_items`: owners can create shares; anonymous users can read non-expired public share rows; expired shares should not expose data.
-- `gear-photos`: bucket exists; users can upload/remove only their own paths; read behavior matches share-link requirements; policy path parsing matches the actual client upload path.
+- `gear-photos`: bucket exists; users can upload/remove only paths whose first segment is their own readable/mutable `gear_items.id`; read behavior matches share-link requirements; policy path parsing matches the actual client upload path.

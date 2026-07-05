@@ -488,6 +488,71 @@ test('database migrations cover foreign keys flagged by Supabase lint', () => {
   }
 })
 
+test('database migrations grant storage api role access to storage schema tables', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607050008_grant_storage_api_schema_access.sql')
+  assert.ok(migration, 'storage api grant migration must exist')
+
+  const sql = compact(migration.sql)
+  assert.ok(sql.includes('grant usage on schema storage to supabase_storage_admin'))
+  assert.ok(sql.includes('grant all privileges on all tables in schema storage to supabase_storage_admin'))
+  assert.ok(sql.includes('grant all privileges on all sequences in schema storage to supabase_storage_admin'))
+  assert.ok(sql.includes('alter role service_role set search_path = storage, public, extensions'))
+  assert.ok(sql.includes('grant usage on schema storage to service_role'))
+  assert.ok(sql.includes('grant all privileges on all tables in schema storage to service_role'))
+  assert.ok(sql.includes('grant all privileges on all sequences in schema storage to service_role'))
+  assert.ok(sql.includes('create policy storage_migrations_admin_all on storage.migrations for all to supabase_storage_admin'))
+})
+
+test('database migrations normalize shared item image snapshots to storage paths', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607050009_normalize_shared_item_image_paths.sql')
+  assert.ok(migration, 'shared item image path migration must exist')
+
+  const sql = compact(migration.sql)
+  assert.ok(sql.includes('update public.shared_items si'))
+  assert.ok(sql.includes("set item_data = jsonb_set(si.item_data, '{image_path}', to_jsonb(gi.image_path), true)"))
+  assert.ok(sql.includes('from public.gear_items gi'))
+  assert.ok(sql.includes('where si.item_id = gi.id'))
+  assert.ok(sql.includes("jsonb_array_elements(si.item_data->'items') with ordinality"))
+  assert.ok(sql.includes("left join public.gear_items gi on gi.id = (item.value->>'id')::uuid"))
+  assert.ok(sql.includes('order by item.ordinality'))
+  assert.ok(sql.includes("coalesce(item.value->>'image_path', '') <> gi.image_path"))
+})
+
+test('database migrations model applied migration state separately from app data', () => {
+  const migrations = readMigrations()
+  const createMigration = migrations.find(({ name }) => name === '202607050006_create_schema_migrations.sql')
+  assert.ok(createMigration, 'schema migration model migration must exist')
+
+  const sql = compact(createMigration.sql)
+  assert.ok(sql.includes('create table if not exists public.schema_migrations'))
+  assert.ok(sql.includes('filename text primary key'))
+  assert.ok(sql.includes('checksum_sha256 text not null'))
+  assert.ok(sql.includes('applied_at timestamptz not null default now()'))
+  assert.ok(sql.includes('source text not null default'))
+  assert.ok(sql.includes('alter table public.schema_migrations enable row level security'))
+  assert.ok(sql.includes('revoke all on public.schema_migrations from anon, authenticated'))
+})
+
+test('database migrations backfill already installed migration records in a separate migration', () => {
+  const migrations = readMigrations()
+  const backfillMigration = migrations.find(({ name }) => name === '202607050007_record_existing_schema_migrations.sql')
+  assert.ok(backfillMigration, 'installed migration backfill migration must exist')
+
+  const sql = compact(backfillMigration.sql)
+  const expectedExistingMigrations = migrations
+    .map(({ name }) => name)
+    .filter(name => name < '202607050007_record_existing_schema_migrations.sql')
+
+  assert.ok(sql.includes('insert into public.schema_migrations (filename, checksum_sha256, source)'))
+  assert.ok(sql.includes("on conflict (filename) do nothing"))
+
+  for (const name of expectedExistingMigrations) {
+    assert.ok(sql.includes(`'${name}'`), `${name} must be recorded as already installed`)
+  }
+})
+
 test('database migrations contain SQL access scenario checks', () => {
   const migrations = readMigrations()
   assert.equal(existsSync(visibilityChecksFile), true, 'visibility access SQL checks must exist')

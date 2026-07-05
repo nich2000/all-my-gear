@@ -95,3 +95,24 @@ test('missing visible search RPCs use quiet empty-result fallback', () => {
   assert.match(serviceSource, /return this\.handleVisibleSearchError\(error,\s*'search_visible_checklists'\)/)
   assert.match(serviceSource, /return this\.handleVisibleSearchError\(error,\s*'search_visible_storages'\)/)
 })
+
+test('gear item photo writes upload data URLs instead of persisting base64 in image_path', () => {
+  assert.match(serviceSource, /async resolveGearItemImagePath\(itemId,\s*image\)/)
+  assert.match(serviceSource, /return await this\.uploadPhoto\(itemId,\s*image\)/)
+  assert.match(serviceSource, /const imagePath = await this\.resolveGearItemImagePath\(item\.id,\s*item\.image\)/)
+  assert.match(serviceSource, /const imageToSave = Object\.prototype\.hasOwnProperty\.call\(updates,\s*'image'\)/)
+  assert.doesNotMatch(serviceSource, /save base64 directly/)
+  assert.doesNotMatch(serviceSource, /image_path:\s*item\.image\s*\|\|\s*null/)
+})
+
+test('gear item photo paths start with item id for storage RLS policies', () => {
+  assert.match(serviceSource, /const filePath = `\$\{itemId\}\/image\.jpg`/)
+  assert.doesNotMatch(serviceSource, /const filePath = `\$\{this\.currentUser\.id\}\//)
+})
+
+test('visible gear search resolves storage paths before rendering images', () => {
+  assert.match(serviceSource, /async resolveGearPhotoUrls\(items\)/)
+  assert.match(serviceSource, /await this\.getPhotoUrlsBatch\(imagePaths\)/)
+  assert.match(serviceSource, /image: item\.image_path \? \(photoUrls\[item\.image_path\] \|\| null\) : item\.image/)
+  assert.match(serviceSource, /return this\.filterVisibleResults\(await this\.resolveGearPhotoUrls\(\(data \|\| \[\]\)\.map\(row => this\.mapGearItem\(row\)\)\),\s*filters\)/)
+})

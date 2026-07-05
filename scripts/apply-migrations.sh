@@ -37,12 +37,75 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
 }
 
+checksum_command() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s\n' sha256sum
+  elif command -v shasum >/dev/null 2>&1; then
+    printf '%s\n' "shasum -a 256"
+  else
+    fail "Required command not found: sha256sum or shasum"
+  fi
+}
+
 container_exists() {
   docker ps --format '{{.Names}}' | grep -Fxq "$1"
 }
 
 read_migrations() {
   find "$MIGRATIONS_DIR" -maxdepth 1 -type f -name '*.sql' | sort
+}
+
+migration_checksum() {
+  local migration="$1"
+  local checksum_tool
+
+  checksum_tool="$(checksum_command)"
+  $checksum_tool "$migration" | awk '{print $1}'
+}
+
+schema_migrations_exists() {
+  docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -At <<'SQL'
+select case when to_regclass('public.schema_migrations') is null then 'false' else 'true' end;
+SQL
+}
+
+migration_record_state() {
+  local migration_name="$1"
+  local migration_checksum="$2"
+
+  docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -At \
+    -v migration_name="$migration_name" \
+    -v migration_checksum="$migration_checksum" <<'SQL'
+select case
+  when not exists (
+    select 1 from public.schema_migrations where filename = :'migration_name'
+  ) then 'missing'
+  when exists (
+    select 1
+    from public.schema_migrations
+    where filename = :'migration_name'
+      and checksum_sha256 = :'migration_checksum'
+  ) then 'applied'
+  else 'checksum_mismatch'
+end;
+SQL
+}
+
+record_migration() {
+  local migration_name="$1"
+  local migration_checksum="$2"
+
+  if [[ "$(schema_migrations_exists)" != "true" ]]; then
+    return 0
+  fi
+
+  docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 \
+    -v migration_name="$migration_name" \
+    -v migration_checksum="$migration_checksum" <<'SQL'
+insert into public.schema_migrations (filename, checksum_sha256)
+values (:'migration_name', :'migration_checksum')
+on conflict (filename) do nothing;
+SQL
 }
 
 verify_rls_state() {
@@ -63,6 +126,7 @@ main() {
   require_command docker
   require_command find
   require_command sort
+  checksum_command >/dev/null
 
   [[ -d "$MIGRATIONS_DIR" ]] || fail "Migrations directory not found: $MIGRATIONS_DIR"
 
@@ -85,8 +149,30 @@ main() {
   docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
 
   for migration in "${migrations[@]}"; do
-    log "Applying $(basename "$migration")"
-    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 < "$migration"
+    migration_name="$(basename "$migration")"
+    migration_checksum="$(migration_checksum "$migration")"
+
+    if [[ "$(schema_migrations_exists)" == "true" ]]; then
+      record_state="$(migration_record_state "$migration_name" "$migration_checksum")"
+      case "$record_state" in
+        applied)
+          log "Skipping already recorded $migration_name"
+          continue
+          ;;
+        missing)
+          ;;
+        checksum_mismatch)
+          fail "Recorded checksum differs for $migration_name"
+          ;;
+        *)
+          fail "Unexpected migration state for $migration_name: $record_state"
+          ;;
+      esac
+    fi
+
+    log "Applying $migration_name"
+    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -v migration_name="$migration_name" -v migration_checksum="$migration_checksum" < "$migration"
+    record_migration "$migration_name" "$migration_checksum"
   done
 
   verify_rls_state

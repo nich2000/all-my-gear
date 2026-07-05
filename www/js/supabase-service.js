@@ -242,6 +242,14 @@ const SupabaseService = {
   _maxOrderCache: null,
   _maxOrderCacheTime: 0,
 
+  async resolveGearItemImagePath(itemId, image) {
+    if (!image) return image || null
+    if (typeof image === 'string' && image.startsWith('data:')) {
+      return await this.uploadPhoto(itemId, image)
+    }
+    return image
+  },
+
   async createGearItem(item) {
     if (!this.currentUser) throw new Error('Not authenticated')
 
@@ -268,6 +276,8 @@ const SupabaseService = {
       this._maxOrderCacheTime = now
     }
 
+    const imagePath = await this.resolveGearItemImagePath(item.id, item.image)
+
     const { data, error } = await supabaseClient
       .from('gear_items')
       .insert([{
@@ -282,7 +292,7 @@ const SupabaseService = {
         year: item.year,
         rating: item.rating,
         comment: item.comment || '',
-        image_path: item.image || null,
+        image_path: imagePath,
         storage_id: item.storageId || null,
         ...window.VisibilityUI.buildResourceSavePayload(item),
         order_index: newOrderIndex,
@@ -298,13 +308,9 @@ const SupabaseService = {
   async updateGearItem(id, updates) {
     if (!this.currentUser) throw new Error('Not authenticated')
 
-    let imageToSave = updates.image
-
-    // Handle image upload if base64 data is provided
-    if (updates.image && updates.image.startsWith('data:')) {
-      // For now, save base64 directly (can be changed to upload to storage later)
-      imageToSave = updates.image
-    }
+    const imageToSave = Object.prototype.hasOwnProperty.call(updates, 'image')
+      ? await this.resolveGearItemImagePath(id, updates.image)
+      : undefined
 
     const visibilityUpdates = updates.visibility !== undefined
       ? window.VisibilityUI.buildResourceSavePayload(updates)
@@ -831,6 +837,20 @@ const SupabaseService = {
     throw error
   },
 
+  async resolveGearPhotoUrls(items) {
+    const imagePaths = [...new Set((items || [])
+      .map(item => item.image_path)
+      .filter(Boolean))]
+    const photoUrls = imagePaths.length > 0
+      ? await this.getPhotoUrlsBatch(imagePaths)
+      : {}
+
+    return (items || []).map(item => ({
+      ...item,
+      image: item.image_path ? (photoUrls[item.image_path] || null) : item.image
+    }))
+  },
+
   async searchVisibleGear(query = '', filters = {}) {
     if (!this.currentUser) throw new Error('Not authenticated')
 
@@ -841,7 +861,7 @@ const SupabaseService = {
     })
 
     if (error) return this.handleVisibleSearchError(error, 'search_visible_gear')
-    return this.filterVisibleResults((data || []).map(row => this.mapGearItem(row)), filters)
+    return this.filterVisibleResults(await this.resolveGearPhotoUrls((data || []).map(row => this.mapGearItem(row))), filters)
   },
 
   async searchVisibleChecklists(query = '', filters = {}) {
@@ -888,8 +908,8 @@ const SupabaseService = {
     const response = await fetch(photoDataUrl)
     const blob = await response.blob()
 
-    // Generate path: users/{userId}/{itemId}.jpg
-    const filePath = `${this.currentUser.id}/${itemId}.jpg`
+    // Storage policies read the gear item id from the first path segment.
+    const filePath = `${itemId}/image.jpg`
 
     const { data, error } = await getSupabase().storage
       .from('gear-photos')

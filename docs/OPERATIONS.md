@@ -202,7 +202,8 @@ Check:
 
 - `gear-photos` bucket exists.
 - Storage policies allow expected upload/read/remove behavior.
-- `image_path` values match `{userId}/{itemId}.jpg`.
+- `image_path` values match `<gear_item_id>/image.jpg`.
+- Browser image requests should use Supabase signed URLs. A request like `https://all-my-gear.pro/<gear_item_id>/image.jpg` means a raw Storage path leaked into an `<img src>`.
 - Signed URL cache in browser is not stale. Clearing localStorage cache keys can help during debugging.
 
 ### Share links fail
@@ -213,6 +214,39 @@ Check:
 - `expires_at` is in the future.
 - Anonymous read policy exists if unauthenticated share viewing is required.
 - Photo paths inside `item_data` can be resolved to signed URLs.
+- `shared_items.item_data` does not contain `data:image` payloads.
+
+### Legacy Image Payloads
+
+Current storage contract:
+
+```text
+gear_items.image_path = <gear_item_id>/image.jpg
+shared_items.item_data.image_path = <gear_item_id>/image.jpg
+shared_items.item_data.items[*].image_path = <gear_item_id>/image.jpg
+```
+
+Useful production checks:
+
+```sql
+select
+  count(*) filter (where image_path like 'data:%') as item_data_urls,
+  max(length(image_path)) as max_image_path_len,
+  pg_size_pretty(pg_total_relation_size('public.gear_items')) as gear_items_total_size
+from public.gear_items;
+
+select
+  count(*) filter (where item_data::text like '%data:image%') as shares_with_data_urls,
+  max(length(item_data::text)) as max_item_data_len,
+  pg_size_pretty(pg_total_relation_size('public.shared_items')) as shared_items_total_size
+from public.shared_items;
+```
+
+If rows contain legacy data URLs:
+
+- Move `gear_items.image_path` data URLs into the `gear-photos` bucket through the Storage API, not by writing directly into `volumes/storage`.
+- Run `202607050009_normalize_shared_item_image_paths.sql` after `gear_items.image_path` contains canonical Storage paths.
+- Run `vacuum full analyze public.gear_items` and/or `vacuum full analyze public.shared_items` only after successful backups and verification.
 
 ## Routine Verification
 
@@ -238,4 +272,4 @@ For user-facing frontend changes, add a browser smoke check:
 - Checklist tab lazy-loads.
 - Photo upload and signed URL display work.
 
-For photo/storage changes, explicitly check that the `gear-photos` bucket exists and that Storage policies match the client object path format `{userId}/{itemId}.jpg`.
+For photo/storage changes, explicitly check that the `gear-photos` bucket exists and that Storage policies match the client object path format `<gear_item_id>/image.jpg`.

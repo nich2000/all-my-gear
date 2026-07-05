@@ -118,7 +118,8 @@ TLS is terminated by nginx with Let's Encrypt certificates for `all-my-gear.pro`
 
 - Authoritative database changes now live in `supabase/migrations`; `sql/*_rows.sql` files are data exports.
 - Client code still calls legacy catalog objects `gear_catalog` and `search_gear_catalog`; normalized brand/category/activity catalogs now have migrations, but this older suggestion contract still needs a migration, compatibility view/RPC, or code removal.
-- `gear-photos` Storage policies are present in `supabase/migrations/202607030005_subscription_visibility_access.sql`, but the bucket itself still needs explicit provisioning. Verify the policy path contract before rollout: the client uploads `{userId}/{itemId}.jpg`, while the current SQL policies inspect the first path segment as a gear item id.
+- `gear-photos` Storage policies are present in `supabase/migrations/202607030005_subscription_visibility_access.sql`, but the bucket itself still needs explicit provisioning. The current object path contract is `<gear_item_id>/image.jpg`; Storage policies inspect the first path segment as the gear item id.
+- Legacy base64 image payloads must not be stored in `gear_items.image_path` or `shared_items.item_data`. Migrations `202607050009_normalize_shared_item_image_paths.sql` and the operational image migration script preserve compact Storage paths in persisted rows.
 - `www/js/app.js` is large and mixes UI, state, data mapping and workflows in one file; future feature work should isolate risky changes.
 
 ## Verification
