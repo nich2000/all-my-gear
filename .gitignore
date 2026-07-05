@@ -5,6 +5,6 @@
 bin
 supabase/.env.old
 supabase/.env.bak
-/data/a8cf0468-ac26-4897-97a1-68fbac9d5364
 /supabase/volumes
-/supabase_user_switch_backup_20260703.dump
+/data
+/backup

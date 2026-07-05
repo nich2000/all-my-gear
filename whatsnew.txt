@@ -1,0 +1,47 @@
+ALL MY GEAR - что нового
+Версия: v1.0.1
+Состояние аудита: v1.0.1-1-g931dc49-dirty
+Период: 2026-06-28 - 2026-07-05
+Дата аудита: 2026-07-05
+
+Итог
+- За последние 7 дней приложение прошло большой технический релиз вокруг Supabase: схема БД оформлена миграциями, публичный доступ к карточкам исправлен, каталоги вынесены из фронтенда в таблицы, добавлены тесты и эксплуатационные инструкции.
+- Тег v1.0.1 стоит на коммите 32a4bf0 "Fix public card"; после тега есть дополнительный коммит 931dc49 "Save" и незакоммиченные изменения.
+
+Функциональные изменения
+- Исправлен публичный просмотр карточки снаряжения: уточнён контракт visible gear card, обновлены UI-обработчики, CSP-тесты и миграция 202607050001.
+- Категории снаряжения перенесены из JS-кода в таблицы Supabase через миграцию normalize_categories.
+- Бренды outdoor-снаряжения перенесены в БД через миграцию normalize_outdoor_brands.
+- Outdoor activities перенесены в БД через миграцию normalize_outdoor_activities.
+- Добавлены индексы под частые query-path сценарии, чтобы разгрузить выборки по Supabase.
+- Переработаны сценарии видимости, подписок и публичного доступа: shared_items, public_gear_shares, RLS/visibility checks.
+- Исправлен устаревший image_path для MSR Quick 2 и добавлен клиентский cache helper для signed photo URL, чтобы не хранить тяжёлые data URL в localStorage.
+- В футере UI добавлен вывод версии приложения v1.0.1 и текущего года.
+
+Инфраструктура и эксплуатация
+- Добавлен полноценный набор Supabase SQL-миграций 202607030001-202607050001 вместо опоры только на sql/allmygear.sql.
+- Добавлен compose-файл для S3/MinIO режима Supabase storage.
+- Добавлены скрипты:
+  - scripts/backup.sh - снимает PostgreSQL dump, архивирует storage/minio и пишет manifest.
+  - scripts/restore-backup.sh - восстанавливает PostgreSQL dump и опционально storage/minio, требует RESTORE_CONFIRM=restore-all-my-gear.
+  - scripts/apply-migrations.sh - применяет SQL-миграции к supabase-db, поддерживает DRY_RUN.
+- В рабочем слое Go/Docker подняты до Go 1.26: Dockerfile, go.mod, Makefile.
+- .gitignore перенастроен под backup/supabase_user_switch_backup_20260703.dump.
+- В репозитории появились локальные backup-артефакты за 2026-07-05: PostgreSQL dumps, manifest, supabase.env и storage archive.
+
+Документация
+- Переписаны и актуализированы README, ARCHITECTURE, DATA_MODEL, OPERATIONS, PROJECT_ANALYSIS и REMARKS_ANALYSIS под фактический Go + self-hosted Supabase runtime.
+- Обновлены copilot-instructions с проектными правилами и текущей архитектурой.
+- DATA_MODEL расширен описанием нормализованных каталогов, activities, видимости и публичных share-сценариев.
+
+Тесты и качество
+- Добавлены Go-тесты для cmd/main.go и набор node:test проверок фронтенда и SQL-миграций.
+- Покрыты app-helpers, CSP-конфигурация, photo URL cache, Supabase service contract, visibility UI и database migrations.
+- Добавлены тесты для новых shell-скриптов apply-migrations и restore-backup.
+- Миграции проверяются тестами на наличие ключевых таблиц, индексов, RLS/visibility правил и публичного card contract.
+
+Риски и незавершённое
+- Текущий рабочий каталог не чистый: есть изменения после v1.0.1 и незакоммиченные файлы.
+- В незакоммиченном diff заполнены реальные Supabase/JWT/S3 секреты в supabase/.env и anon key в scripts/run.sh. Перед коммитом/публикацией их нужно вынести из git-tracked файлов или заменить на шаблоны.
+- Локальные backup-дампы сейчас untracked; их не стоит коммитить в репозиторий.
+- Версия в UI всё ещё v1.0.1, хотя git-состояние уже v1.0.1-1-g931dc49-dirty. Для следующего релиза стоит поднять номер версии после стабилизации рабочего слоя.

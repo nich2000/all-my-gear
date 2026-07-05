@@ -1,7 +1,7 @@
 mod:
 	#clear
 	go get -u ./...
-	go mod tidy -compat=1.25
+	go mod tidy -compat=1.26
 	go mod vendor
 	go fmt ./...
 

@@ -128,8 +128,14 @@
   </main>
 
   <footer class="footer">
-    <small>ALL MY GEAR 2025</small>
+    <small id="appVersionLabel"></small>
   </footer>
+
+  <script>
+    const APP_VERSION = 'v1.0.1';
+    const currentYear = new Date().getFullYear();
+    document.getElementById('appVersionLabel').textContent = `ALL MY GEAR ${currentYear} ${APP_VERSION}`;
+  </script>
 
   <div id="modal" class="modal hidden">
     <div class="modal-content">
