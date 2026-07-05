@@ -26,6 +26,19 @@ create table if not exists public.user_subscriptions (
 create index if not exists idx_user_subscriptions_user_id on public.user_subscriptions(user_id);
 create index if not exists idx_user_subscriptions_status on public.user_subscriptions(status);
 
+alter table public.subscription_plans enable row level security;
+alter table public.user_subscriptions enable row level security;
+
+drop policy if exists subscription_plans_select_all on public.subscription_plans;
+create policy subscription_plans_select_all
+on public.subscription_plans for select to anon, authenticated
+using (true);
+
+drop policy if exists user_subscriptions_select_owner on public.user_subscriptions;
+create policy user_subscriptions_select_owner
+on public.user_subscriptions for select to authenticated
+using (auth.uid() = user_id);
+
 insert into public.subscription_plans (code, name, can_make_private, can_share_with_users)
 values
   ('free', 'Free', false, false),
@@ -37,7 +50,9 @@ set
   can_share_with_users = excluded.can_share_with_users,
   updated_at = now();
 
-create or replace view public.user_entitlements as
+create or replace view public.user_entitlements
+with (security_invoker = true)
+as
 select
   us.user_id,
   bool_or(sp.can_make_private) as can_make_private,

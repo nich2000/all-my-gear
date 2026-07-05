@@ -120,6 +120,7 @@ set
 create or replace function public.sync_gear_item_category_id()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 declare
   normalized_category text;

@@ -184,6 +184,44 @@ test('database migrations add subscription entitlements and durable visibility c
   assert.match(allSql, /constraint resource_access_grants_role_check check \(role = 'viewer'\)/)
 })
 
+test('subscription entitlement tables and view satisfy Supabase public schema security lint', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.match(allSql, /create or replace view public\.user_entitlements with \(security_invoker = true\) as/)
+
+  for (const table of ['subscription_plans', 'user_subscriptions']) {
+    assert.ok(
+      allSql.includes(`alter table public.${table} enable row level security`),
+      `${table} must enable RLS because public schema is exposed through PostgREST`
+    )
+  }
+
+  assert.match(allSql, /create policy subscription_plans_select_all on public\.subscription_plans for select to anon, authenticated/)
+  assert.match(allSql, /create policy user_subscriptions_select_owner on public\.user_subscriptions for select to authenticated using \(auth\.uid\(\) = user_id\)/)
+})
+
+test('catalog trigger functions and search extension satisfy Supabase security lint', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  for (const functionName of ['sync_gear_item_category_id', 'sync_gear_item_brand_id']) {
+    assert.match(
+      allSql,
+      new RegExp(`create or replace function public\\.${functionName}\\(\\) returns trigger language plpgsql set search_path = public as`)
+    )
+    assert.ok(
+      allSql.includes(`alter function public.${functionName}() set search_path = public`),
+      `${functionName} must be hardened for existing databases`
+    )
+  }
+
+  assert.ok(allSql.includes('create schema if not exists extensions'))
+  assert.ok(allSql.includes('create extension if not exists pg_trgm with schema extensions'))
+  assert.ok(allSql.includes('alter extension pg_trgm set schema extensions'))
+  assert.equal(allSql.includes('create extension if not exists pg_trgm;'), false)
+})
+
 test('database migrations add access functions, search RPCs, storage stats, and hardened RLS', () => {
   const migrations = readMigrations()
   const allSql = compact(migrations.map(migration => migration.sql).join('\n'))

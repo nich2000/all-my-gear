@@ -1,6 +1,9 @@
 -- Add indexes for the current Supabase read paths and visible-search RPCs.
 
-create extension if not exists pg_trgm;
+create schema if not exists extensions;
+create extension if not exists pg_trgm with schema extensions;
+alter extension pg_trgm set schema extensions;
+set search_path = public, extensions;
 
 create index if not exists idx_gear_items_user_category_order_created
   on public.gear_items(user_id, category, order_index, created_at desc);

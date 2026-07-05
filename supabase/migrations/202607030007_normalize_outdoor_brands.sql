@@ -946,6 +946,7 @@ where lower(trim(gi.brand)) = ob.normalized_name
 create or replace function public.sync_gear_item_brand_id()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 declare
   normalized_brand text;
