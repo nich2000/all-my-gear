@@ -99,6 +99,32 @@ test('database migrations are safe to apply to an existing production schema', (
   assert.match(allSql, /drop policy if exists "anyone can read non-expired public shares" on public\.shared_items/)
 })
 
+test('visibility access policies are recreated idempotently', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607030005_subscription_visibility_access.sql')
+  assert.ok(migration, 'subscription visibility migration must exist')
+
+  const sql = compact(migration.sql)
+  for (const policy of [
+    'storages_select_visible',
+    'storages_insert_owner_with_entitlement',
+    'storages_update_owner_with_entitlement',
+    'storages_delete_owner',
+    'gear_items_select_visible',
+    'gear_items_insert_owner_with_entitlement',
+    'gear_items_update_owner_with_entitlement',
+    'gear_items_delete_owner',
+    'checklists_select_visible',
+    'checklists_insert_owner_with_entitlement',
+    'checklists_update_owner_with_entitlement',
+    'checklists_delete_owner'
+  ]) {
+    assert.ok(sql.includes(`drop policy if exists ${policy}`), `${policy} must be dropped before recreate`)
+    assert.ok(sql.includes(`create policy ${policy}`), `${policy} must be recreated`)
+    assert.ok(sql.indexOf(`drop policy if exists ${policy}`) < sql.indexOf(`create policy ${policy}`))
+  }
+})
+
 test('database migrations define visibility, entitlements, grants and visible search RPCs', () => {
   const migrations = readMigrations()
   const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
@@ -263,6 +289,35 @@ test('database migrations normalize outdoor activities and link checklists to th
     'Scientific Expedition'
   ]) {
     assert.ok(allSql.includes(`'${activity.toLowerCase().replaceAll("'", "''")}'`), `${activity} must be seeded in outdoor_activities`)
+  }
+})
+
+test('database migrations add query-path indexes for Supabase reads and visible search', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.ok(allSql.includes('create extension if not exists pg_trgm'), 'visible search requires pg_trgm indexes')
+
+  for (const expectedIndex of [
+    'create index if not exists idx_gear_items_user_category_order_created on public.gear_items(user_id, category, order_index, created_at desc)',
+    'create index if not exists idx_checklists_user_created_at on public.checklists(user_id, created_at desc)',
+    'create index if not exists idx_storages_user_name on public.storages(user_id, name)',
+    'create index if not exists idx_user_category_preferences_user_order on public.user_category_preferences(user_id, order_index)',
+    'create index if not exists idx_resource_access_grants_owner_resource_created on public.resource_access_grants(owner_id, resource_type, resource_id, created_at)',
+    'create index if not exists idx_outdoor_brands_active_display_name on public.outdoor_brands(is_active, display_name)',
+    'create index if not exists idx_outdoor_activities_active_display_name on public.outdoor_activities(is_active, display_name)',
+    'create index if not exists idx_categories_active_display_order on public.categories(is_active, display_order)'
+  ]) {
+    assert.ok(allSql.includes(expectedIndex), `${expectedIndex} must exist`)
+  }
+
+  for (const expectedIndex of [
+    'idx_gear_items_visible_search_trgm',
+    'idx_checklists_visible_search_trgm',
+    'idx_storages_visible_search_trgm'
+  ]) {
+    assert.ok(allSql.includes(expectedIndex), `${expectedIndex} must exist`)
+    assert.match(allSql, new RegExp(`${expectedIndex}.*using gin.*gin_trgm_ops`))
   }
 })
 

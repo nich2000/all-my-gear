@@ -329,6 +329,10 @@ drop policy if exists users_can_view_own_storages on public.storages;
 drop policy if exists users_can_insert_own_storages on public.storages;
 drop policy if exists users_can_update_own_storages on public.storages;
 drop policy if exists users_can_delete_own_storages on public.storages;
+drop policy if exists storages_select_visible on public.storages;
+drop policy if exists storages_insert_owner_with_entitlement on public.storages;
+drop policy if exists storages_update_owner_with_entitlement on public.storages;
+drop policy if exists storages_delete_owner on public.storages;
 
 create policy storages_select_visible on public.storages for select to anon, authenticated
   using (public.can_read_storage(id));
@@ -344,6 +348,10 @@ drop policy if exists users_can_view_own_gear_items on public.gear_items;
 drop policy if exists users_can_insert_own_gear_items on public.gear_items;
 drop policy if exists users_can_update_own_gear_items on public.gear_items;
 drop policy if exists users_can_delete_own_gear_items on public.gear_items;
+drop policy if exists gear_items_select_visible on public.gear_items;
+drop policy if exists gear_items_insert_owner_with_entitlement on public.gear_items;
+drop policy if exists gear_items_update_owner_with_entitlement on public.gear_items;
+drop policy if exists gear_items_delete_owner on public.gear_items;
 
 create policy gear_items_select_visible on public.gear_items for select to anon, authenticated
   using (public.can_read_gear_item(id));
@@ -359,6 +367,10 @@ drop policy if exists users_can_view_own_checklists on public.checklists;
 drop policy if exists users_can_insert_own_checklists on public.checklists;
 drop policy if exists users_can_update_own_checklists on public.checklists;
 drop policy if exists users_can_delete_own_checklists on public.checklists;
+drop policy if exists checklists_select_visible on public.checklists;
+drop policy if exists checklists_insert_owner_with_entitlement on public.checklists;
+drop policy if exists checklists_update_owner_with_entitlement on public.checklists;
+drop policy if exists checklists_delete_owner on public.checklists;
 
 create policy checklists_select_visible on public.checklists for select to anon, authenticated
   using (public.can_read_checklist(id));
