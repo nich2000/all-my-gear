@@ -19,6 +19,7 @@ Browser -> Go static/config server -> Supabase JS SDK -> Supabase Auth/PostgREST
 - `sql/allmygear.sql`: Schema snapshot. Treat it as documentation/snapshot until proper migrations exist.
 - `supabase/docker-compose.yml`: Self-hosted Supabase stack.
 - `nginx/all-my-gear`: Production reverse proxy example.
+- `tests/*.mjs`: Node built-in test runner coverage for frontend helper contracts, CSP and Supabase migration contracts.
 
 ## Important Runtime Configuration
 
@@ -53,9 +54,9 @@ The browser uses the anon key, so security must be enforced by Supabase RLS and 
 
 ## Current Known Gaps
 
-- `sql/allmygear.sql` defines RLS policies for `category_order` and `storages`, but not for all tables used by the client.
-- `gear_catalog`, `search_gear_catalog` and `gear-photos` are referenced by JavaScript but are not defined in the schema snapshot.
-- SQL files are snapshots, not ordered migrations.
+- Ordered schema changes live in `supabase/migrations`; `sql/*.sql` files are legacy snapshots or data exports unless a task explicitly says otherwise.
+- `gear_catalog` and `search_gear_catalog` are still referenced by JavaScript but are not defined by the migrations.
+- `gear-photos` Storage policies exist in `202607030005_subscription_visibility_access.sql`, but the bucket provisioning and object path policy must be verified against the client upload path `{userId}/{itemId}.jpg`.
 - `www/js/app.js` mixes many workflows in one file; avoid unrelated refactors.
 
 ## Development Workflow
@@ -76,6 +77,12 @@ Backend verification:
 
 ```bash
 go test ./...
+```
+
+Frontend and SQL contract verification:
+
+```bash
+node --test tests/*.mjs
 ```
 
 Docker build:

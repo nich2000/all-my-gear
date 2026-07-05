@@ -30,7 +30,8 @@ Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 | `www/js/supabase-service.js` | Supabase client wrapper for auth, database, storage, sharing and subscriptions. |
 | `www/style/style.css` | Application styles. |
 | `supabase/migrations/` | Ordered Supabase migrations for the application schema. |
-| `sql/allmygear.sql` | Deprecated pointer kept for manual reference. |
+| `supabase/tests/visibility_access_checks.sql` | SQL scenario checks for visibility and entitlement behavior. |
+| `sql/allmygear.sql` | Legacy schema/data snapshot kept for manual reference. |
 | `sql/*_rows.sql` | Exported data rows for application tables. Treat as data snapshots, not migrations. |
 | `supabase/docker-compose.yml` | Self-hosted Supabase stack. |
 | `nginx/all-my-gear` | Production nginx reverse proxy example. |
@@ -116,7 +117,8 @@ TLS is terminated by nginx with Let's Encrypt certificates for `all-my-gear.pro`
 ## Current Risk Summary
 
 - Authoritative database changes now live in `supabase/migrations`; `sql/*_rows.sql` files are data exports.
-- Client code calls `gear_catalog`, `search_gear_catalog` and Supabase Storage bucket `gear-photos`; those runtime objects still need migrations or explicit provisioning docs.
+- Client code still calls legacy catalog objects `gear_catalog` and `search_gear_catalog`; normalized brand/category/activity catalogs now have migrations, but this older suggestion contract still needs a migration, compatibility view/RPC, or code removal.
+- `gear-photos` Storage policies are present in `supabase/migrations/202607030005_subscription_visibility_access.sql`, but the bucket itself still needs explicit provisioning. Verify the policy path contract before rollout: the client uploads `{userId}/{itemId}.jpg`, while the current SQL policies inspect the first path segment as a gear item id.
 - `www/js/app.js` is large and mixes UI, state, data mapping and workflows in one file; future feature work should isolate risky changes.
 
 ## Verification
@@ -131,4 +133,10 @@ Build check:
 
 ```bash
 make build
+```
+
+Frontend and migration contract checks use Node's built-in test runner:
+
+```bash
+node --test tests/*.mjs
 ```

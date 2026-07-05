@@ -262,17 +262,19 @@ Client access:
 
 Security note: owners can manage their shares, and anonymous users can read non-expired share rows. `item_id` and `checklist_id` are mutually exclusive and cascade-delete share rows when the source object is deleted.
 
-## Runtime Objects Not Yet Defined By Migrations
+## Runtime Objects With Remaining Provisioning Gaps
 
 The frontend also depends on:
 
 | Object | Used by | Required behavior |
 | --- | --- | --- |
-| `gear_catalog` table/view | brand/model suggestions | Selectable by authenticated or anonymous users depending on product policy. |
-| `search_gear_catalog` RPC | search suggestions | Returns catalog matches for query, brand and limit. |
-| `gear-photos` Storage bucket | item/avatar photos | Upload/remove by owner, signed URL read for allowed objects. |
+| `gear_catalog` table/view | legacy brand/model suggestions | Selectable by authenticated or anonymous users depending on product policy, or replaced by normalized catalog calls. |
+| `search_gear_catalog` RPC | legacy search suggestions | Returns catalog matches for query, brand and limit, or is removed after frontend cleanup. |
+| `gear-photos` Storage bucket | item/avatar photos | Bucket must exist; upload/remove by owner; signed URL read for allowed objects. |
 
-These objects should be added to migrations or documented as manually provisioned infrastructure.
+The normalized catalogs `categories`, `outdoor_brands` and `outdoor_activities` are covered by migrations. The old `gear_catalog` / `search_gear_catalog` suggestion API is still referenced by `www/js/supabase-service.js` and needs either compatibility database objects or code cleanup.
+
+Storage policies for `gear-photos` are defined in `202607030005_subscription_visibility_access.sql`, but bucket creation is still an infrastructure step. Before production rollout, verify the object path contract: the client writes `{userId}/{itemId}.jpg`, while the current Storage policies inspect the first path segment as a gear item id.
 
 ## Browser Local Storage Keys
 
@@ -295,4 +297,4 @@ Before production changes, verify these Supabase policies directly in the live p
 - `category_order`: authenticated users can select/insert/update/delete only their own rows.
 - `storages`: users can select rows they own, public rows and rows shared with them; only owners can mutate.
 - `shared_items`: owners can create shares; anonymous users can read non-expired public share rows; expired shares should not expose data.
-- `gear-photos`: users can upload/remove only their own paths; read behavior must match share-link requirements.
+- `gear-photos`: bucket exists; users can upload/remove only their own paths; read behavior matches share-link requirements; policy path parsing matches the actual client upload path.

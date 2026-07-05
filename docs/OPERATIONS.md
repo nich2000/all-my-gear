@@ -223,7 +223,13 @@ go test ./...
 make build
 ```
 
-For frontend changes, add a browser smoke check:
+Run static frontend and migration contract tests:
+
+```bash
+node --test tests/*.mjs
+```
+
+For user-facing frontend changes, add a browser smoke check:
 
 - App loads.
 - Sign-in modal opens.
@@ -231,3 +237,5 @@ For frontend changes, add a browser smoke check:
 - Add/edit/delete item works.
 - Checklist tab lazy-loads.
 - Photo upload and signed URL display work.
+
+For photo/storage changes, explicitly check that the `gear-photos` bucket exists and that Storage policies match the client object path format `{userId}/{itemId}.jpg`.

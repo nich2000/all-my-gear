@@ -125,6 +125,20 @@ test('visibility access policies are recreated idempotently', () => {
   }
 })
 
+test('visible gear search function can be recreated after later contract migrations', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607030005_subscription_visibility_access.sql')
+  assert.ok(migration, 'subscription visibility migration must exist')
+
+  const sql = compact(migration.sql)
+  assert.ok(sql.includes('drop function if exists public.search_visible_gear(text, int, int)'))
+  assert.ok(
+    sql.indexOf('drop function if exists public.search_visible_gear(text, int, int)') <
+      sql.indexOf('create or replace function public.search_visible_gear(search_query text, result_limit int, result_offset int)'),
+    'search_visible_gear must be dropped before recreating because later migrations change its return row type'
+  )
+})
+
 test('database migrations define visibility, entitlements, grants and visible search RPCs', () => {
   const migrations = readMigrations()
   const allSql = compact(migrations.map(migration => migration.sql).join('\n'))

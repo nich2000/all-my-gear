@@ -4,7 +4,7 @@
 
 ALLMYGEAR is a personal gear inventory and checklist SPA. The application is mostly client-side, with a small Go server that serves static files and injects Supabase configuration into the browser. Supabase is the real backend: authentication, PostgREST database access, Storage and Realtime are called directly from JavaScript with the anon key.
 
-The project is usable as a small self-hosted product, but some runtime database objects still need migration coverage. The highest remaining operational risk is not the Go server; it is the database contract around Storage policies, `gear_catalog` and `search_gear_catalog`.
+The project is usable as a small self-hosted product, and most of the public schema is now represented by ordered migrations. The highest remaining operational risk is not the Go server; it is the remaining Supabase contract around legacy catalog suggestions and the exact Storage bucket/path policy for photos.
 
 ## What The Application Does
 
@@ -54,7 +54,7 @@ The public application schema is now represented by ordered files in `supabase/m
 
 Because the browser uses `SUPABASE_ANON_KEY`, production safety still depends on Supabase-side policies, not on client-side `.eq('user_id', currentUser.id)` filters. Client filters are useful but not a security boundary.
 
-### 2. Some runtime database objects still need migration coverage
+### 2. Some runtime database objects still need migration or provisioning coverage
 
 The client uses:
 
@@ -62,7 +62,9 @@ The client uses:
 - `search_gear_catalog`
 - Storage bucket `gear-photos`
 
-These are not yet defined in `supabase/migrations`. They may exist in the live Supabase instance, but the repository does not currently provide a reproducible setup for them.
+`gear_catalog` and `search_gear_catalog` are not yet defined in `supabase/migrations`. The newer normalized catalogs `categories`, `outdoor_brands` and `outdoor_activities` do have migrations, so the remaining work is either a compatibility table/RPC for the old suggestion API or removal of the old calls from `www/js/supabase-service.js`.
+
+`gear-photos` policies are now defined in `202607030005_subscription_visibility_access.sql`, but the repository still does not create the Storage bucket. There is also a path-contract risk to verify before rollout: the client uploads `{userId}/{itemId}.jpg`, while the current SQL policies inspect the first path segment as a gear item id.
 
 ### 3. Exported row files are snapshots, not migrations
 
@@ -82,14 +84,14 @@ The previous root README still described a localStorage-only static page. That n
 
 ## Recommended Next Steps
 
-1. Add migrations for `gear_catalog`, `search_gear_catalog` and the `gear-photos` bucket.
-2. Explicitly verify and document Storage policies for `gear-photos`.
+1. Resolve the old `gear_catalog` / `search_gear_catalog` contract with migrations, compatibility objects or frontend code cleanup.
+2. Provision the `gear-photos` bucket reproducibly and align its Storage policies with the client upload path.
 3. Split `www/js/app.js` only when touching related functionality, for example auth, checklists, inventory rendering, storage locations and sharing.
 4. Add a non-secret `.env.example` and a deploy checklist with required values.
-5. Add at least smoke tests for the Go config rendering path and a browser smoke test for app load.
+5. Add a browser smoke test for app load and signed-in inventory flow.
 
 ## Current Verification Signals
 
-- `go test ./...` passes for the Go package, with no test files.
-- The repository has no automated frontend tests.
-- The repository has no migration verification command.
+- Go server tests live in `cmd/main_test.go` and can be run with `go test ./...`.
+- Frontend helper, CSP and Supabase migration contract tests live in `tests/*.mjs` and can be run with `node --test tests/*.mjs`.
+- Migration tests statically verify ordered schema files, RLS/policy contracts, visible-search RPC return shape, normalized catalogs, query-path indexes and SQL visibility scenarios.

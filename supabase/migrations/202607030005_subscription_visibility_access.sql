@@ -382,6 +382,8 @@ create policy checklists_update_owner_with_entitlement on public.checklists for 
 create policy checklists_delete_owner on public.checklists for delete to authenticated
   using (auth.uid() = user_id);
 
+drop function if exists public.search_visible_gear(text, int, int);
+
 create or replace function public.search_visible_gear(search_query text, result_limit int, result_offset int)
 returns table (
   id uuid,
