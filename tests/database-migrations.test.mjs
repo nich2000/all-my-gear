@@ -238,6 +238,34 @@ test('database migrations normalize outdoor brands and link gear items to the br
   }
 })
 
+test('database migrations normalize outdoor activities and link checklists to the activity catalog', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.ok(allSql.includes('create table if not exists public.outdoor_activities'))
+  assert.ok(allSql.includes('create table if not exists public.checklist_activities'))
+  assert.match(allSql, /foreign key \(checklist_id\) references public\.checklists\(id\) on delete cascade/)
+  assert.match(allSql, /foreign key \(activity_id\) references public\.outdoor_activities\(id\) on delete cascade/)
+  assert.match(allSql, /constraint checklist_activities_checklist_activity_key unique \(checklist_id, activity_id\)/)
+  assert.ok(allSql.includes('create index if not exists idx_outdoor_activities_display_name'))
+  assert.ok(allSql.includes('create index if not exists idx_checklist_activities_checklist_id'))
+  assert.ok(allSql.includes('create or replace function public.sync_checklist_activity_links()'))
+  assert.ok(allSql.includes('create trigger sync_checklist_activity_links_trigger'))
+  assert.ok(allSql.includes('after insert or update of activities on public.checklists'))
+  assert.match(allSql, /create policy outdoor_activities_select_all/)
+  assert.match(allSql, /create policy checklist_activities_select_visible_checklist/)
+
+  for (const activity of [
+    'Day Hiking',
+    'Backpacking',
+    'Stand-up Paddleboarding (SUP)',
+    'Spearfishing',
+    'Scientific Expedition'
+  ]) {
+    assert.ok(allSql.includes(`'${activity.toLowerCase().replaceAll("'", "''")}'`), `${activity} must be seeded in outdoor_activities`)
+  }
+})
+
 test('database migrations contain SQL access scenario checks', () => {
   const migrations = readMigrations()
   assert.equal(existsSync(visibilityChecksFile), true, 'visibility access SQL checks must exist')

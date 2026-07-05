@@ -42,6 +42,22 @@ test('frontend brand autocomplete is rendered from loaded outdoor brands', () =>
   assert.doesNotMatch(appSource, /Outdoor gear brands database - comprehensive list/)
 })
 
+test('supabase service loads outdoor activity catalog from database', () => {
+  assert.match(serviceSource, /async getOutdoorActivities\(\)/)
+  assert.match(serviceSource, /\.from\('outdoor_activities'\)/)
+  assert.match(serviceSource, /\.select\('id, name, display_name'\)/)
+  assert.match(serviceSource, /\.eq\('is_active', true\)/)
+  assert.match(serviceSource, /\.order\('display_name', \{ ascending: true \}\)/)
+})
+
+test('frontend checklist activity controls are rendered from loaded outdoor activities', () => {
+  assert.match(appSource, /let outdoorActivities = \[\]/)
+  assert.match(appSource, /outdoorActivities = await SupabaseService\.getOutdoorActivities\(\)/)
+  assert.match(appSource, /function loadOutdoorActivities\(\)/)
+  assert.doesNotMatch(appSource, /const\s+outdoorActivities\s*=\s*\[/)
+  assert.doesNotMatch(appSource, /Outdoor activities database/)
+})
+
 test('frontend category controls are rendered from loaded category order', () => {
   assert.match(appSource, /function renderCategoryOptions\(selectedCategory\)/)
   assert.match(appSource, /const orderedCategories = Array\.isArray\(categoryOrder\) \? \[\.\.\.categoryOrder\] : \[\]/)

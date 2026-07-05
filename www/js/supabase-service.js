@@ -525,6 +525,20 @@ const SupabaseService = {
       .filter(Boolean)
   },
 
+  async getOutdoorActivities() {
+    const { data, error } = await supabaseClient
+      .from('outdoor_activities')
+      .select('id, name, display_name')
+      .eq('is_active', true)
+      .order('display_name', { ascending: true })
+
+    if (error) throw error
+
+    return (data || [])
+      .map(activity => activity.display_name || activity.name)
+      .filter(Boolean)
+  },
+
   async getCategoryOrder() {
     if (!this.currentUser) throw new Error('Not authenticated')
 

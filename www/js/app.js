@@ -3525,6 +3525,7 @@
   // initialization - only authenticated users can access data
   async function initializeApp() {
     await loadOutdoorBrands()
+    await loadOutdoorActivities()
     await initAuth()
 
     if (!isAuthenticated) {
@@ -3545,66 +3546,27 @@
   let checklistsLoaded = false
   let editingChecklistId = null
 
-  // Outdoor activities database
-  const outdoorActivities = [
-    // Hiking & Trekking
-    'Day Hiking', 'Multi-day Hiking', 'Backpacking', 'Thru-hiking', 'Ultralight Hiking',
-    'Mountaineering', 'Alpine Climbing', 'Peak Bagging', 'Via Ferrata', 'Trail Running',
+  let outdoorActivities = []
 
-    // Camping
-    'Car Camping', 'Backcountry Camping', 'Wild Camping', 'Bikepacking', 'Canoe Camping',
-    'Winter Camping', 'Beach Camping', 'Desert Camping', 'Jungle Camping', 'Glamping',
+  function renderActivityOptions() {
+    const tagInput = document.getElementById('newTagInput')
+    if (!tagInput) return
 
-    // Climbing
-    'Sport Climbing', 'Trad Climbing', 'Bouldering', 'Ice Climbing', 'Mixed Climbing',
-    'Big Wall Climbing', 'Deep Water Soloing', 'Indoor Climbing',
+    let activityList = document.getElementById('activity-list')
+    if (!activityList) {
+      activityList = document.createElement('datalist')
+      activityList.id = 'activity-list'
+      document.body.appendChild(activityList)
+    }
 
-    // Winter Sports
-    'Skiing', 'Ski Touring', 'Backcountry Skiing', 'Splitboarding', 'Snowboarding',
-    'Cross-country Skiing', 'Ski Mountaineering', 'Snowshoeing', 'Ice Skating',
-    'Sledding', 'Snow Camping',
-
-    // Water Sports
-    'Kayaking', 'Sea Kayaking', 'Whitewater Kayaking', 'Canoeing', 'Rafting',
-    'Stand-up Paddleboarding (SUP)', 'Surfing', 'Windsurfing', 'Kitesurfing',
-    'Sailing', 'Swimming', 'Snorkeling', 'Scuba Diving', 'Freediving', 'Spearfishing',
-
-    // Cycling
-    'Road Cycling', 'Mountain Biking', 'Gravel Cycling', 'Bikepacking', 'BMX',
-    'Downhill Mountain Biking', 'Enduro', 'Trail Riding', 'Fat Biking',
-
-    // Adventure Travel
-    'Overlanding', 'Van Life', 'Off-road Driving', 'Motorcycle Adventure', 'Expedition',
-    'Desert Expedition', 'Polar Expedition', 'Jungle Expedition',
-
-    // Hunting & Fishing
-    'Hunting', 'Bow Hunting', 'Big Game Hunting', 'Bird Hunting', 'Fishing',
-    'Fly Fishing', 'Ice Fishing', 'Spearfishing', 'Wildlife Photography',
-
-    // Extreme & Air Sports
-    'Paragliding', 'Hang Gliding', 'Skydiving', 'BASE Jumping', 'Wingsuit Flying',
-    'Hot Air Ballooning', 'Bungee Jumping', 'Zip Lining',
-
-    // Trail & Endurance
-    'Ultramarathon', 'Trail Running', 'Fastpacking', 'Orienteering', 'Rogaining',
-    'Adventure Racing',
-
-    // Rock & Cave
-    'Canyoning', 'Caving (Spelunking)', 'Coasteering',
-
-    // Survival & Bushcraft
-    'Bushcraft', 'Survival Training', 'Wilderness Skills', 'Foraging',
-
-    // Packrafting & River
-    'Packrafting', 'River Trekking',
-
-    // Multi-sport
-    'Triathlon', 'Duathlon', 'Adventure Racing', 'Obstacle Course Racing',
-
-    // Other
-    'Geocaching', 'Birdwatching', 'Stargazing', 'Nature Photography', 'Wilderness First Aid Course',
-    'Yoga Retreat', 'Meditation Retreat', 'Volunteering (Conservation)', 'Scientific Expedition'
-  ].sort()
+    activityList.innerHTML = ''
+    outdoorActivities.forEach(activity => {
+      const option = document.createElement('option')
+      option.value = activity
+      activityList.appendChild(option)
+    })
+    tagInput.setAttribute('list', 'activity-list')
+  }
 
   const checklistModal = document.getElementById('checklistModal')
   const checklistModalTitle = document.getElementById('checklistModalTitle')
@@ -5738,6 +5700,16 @@
     }
   }
 
+  async function loadOutdoorActivities() {
+    try {
+      outdoorActivities = await SupabaseService.getOutdoorActivities()
+    } catch (err) {
+      console.warn('Error loading outdoor activities:', err)
+      outdoorActivities = []
+    }
+    renderActivityOptions()
+  }
+
   async function loadFromSupabase() {
     if (isLoading) return // Prevent multiple simultaneous loads
     isLoading = true
@@ -5852,6 +5824,7 @@
       checklists = []
 
       await loadOutdoorBrands()
+      await loadOutdoorActivities()
 
       // Load category order
       const orderData = await SupabaseService.getCategoryOrder()

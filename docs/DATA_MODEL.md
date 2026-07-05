@@ -54,7 +54,7 @@ Important columns:
 | `user_id` | `uuid` | Owner, references `auth.users(id)`. |
 | `name` | `text` | Required checklist name. |
 | `description` | `text` | Optional description, not heavily used by current client. |
-| `activities` | `jsonb` | Frontend maps this to `tags`. |
+| `activities` | `jsonb` | Frontend maps this to `tags`; mirrored to `checklist_activities` when values match the activity catalog. |
 | `items` | `jsonb` | Checklist item snapshots/references. |
 | `start_date` | `date` | Optional trip start date. |
 | `end_date` | `date` | Optional trip end date. |
@@ -71,6 +71,42 @@ Client access:
 - realtime subscription on `checklists`
 
 Security note: RLS allows owners, public rows and explicit shared grants. Public checklist snapshots must not expose private item fields.
+
+### `outdoor_activities`
+
+Stores the global outdoor activity catalog used by checklist tag suggestions.
+
+Important columns:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `id` | `uuid` | Activity id. |
+| `name` | `text` | Stable activity name, unique. |
+| `display_name` | `text` | UI label. |
+| `normalized_name` | `text` | Lowercase lookup value for syncing checklist tags. |
+| `display_order` | `integer` | Default ordering copied from the former frontend catalog. |
+| `is_active` | `boolean` | Whether the activity is selectable/displayed. |
+
+Client access:
+
+- `getOutdoorActivities`
+
+Security note: active activities are selectable by anonymous and authenticated users.
+
+### `checklist_activities`
+
+Stores normalized checklist-to-activity links mirrored from `checklists.activities`.
+
+Important columns:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `id` | `uuid` | Link row id. |
+| `checklist_id` | `uuid` | Checklist, references `checklists(id)` with cascade delete. |
+| `activity_id` | `uuid` | Activity, references `outdoor_activities(id)` with cascade delete. |
+| `activity_name` | `text` | Display name copied from `outdoor_activities` for convenient reads. |
+
+Security note: select access follows `can_read_checklist(checklist_id)`. Inserts and deletes are owner-only; normal app writes are maintained by the `sync_checklist_activity_links` trigger.
 
 ### `categories`
 
