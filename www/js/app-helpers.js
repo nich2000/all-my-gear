@@ -14,6 +14,7 @@
     const grouped = groupedItems || {}
     const nonEmpty = []
     const empty = []
+    const orderedSet = new Set(orderedCategories)
 
     orderedCategories.forEach(category => {
       const items = grouped[category] || []
@@ -21,6 +22,12 @@
         nonEmpty.push(category)
       } else if (showEmpty) {
         empty.push(category)
+      }
+    })
+
+    Object.keys(grouped).forEach(category => {
+      if (!orderedSet.has(category) && (grouped[category] || []).length > 0) {
+        nonEmpty.push(category)
       }
     })
 
@@ -79,14 +86,39 @@
     return true
   }
 
+  function isHeicLikeFile(file) {
+    if (!file) return false
+    const type = (file.type || '').toLowerCase()
+    const name = (file.name || '').toLowerCase()
+    return type === 'image/heic' ||
+      type === 'image/heif' ||
+      name.endsWith('.heic') ||
+      name.endsWith('.heif')
+  }
+
+  function shouldProcessImageFileBeforePreview(file, maxBytes) {
+    if (!file) return false
+    return isHeicLikeFile(file) || Number(file.size || 0) > Number(maxBytes || 0)
+  }
+
+  function shouldRefreshImageUrlOnError(imagePath) {
+    return Boolean(
+      imagePath &&
+      typeof imagePath === 'string' &&
+      !imagePath.startsWith('data:')
+    )
+  }
+
   const api = {
     buildChecklistShareData,
     buildChecklistShareUrl,
     getRenderableGearCategories,
     getStorageFilterLabel,
+    shouldProcessImageFileBeforePreview,
     matchesStorageFilter,
     normalizeCategoryOrder,
     normalizeGearCategory,
+    shouldRefreshImageUrlOnError,
     shouldCollapseCategory,
     shouldCollapseChecklist
   }

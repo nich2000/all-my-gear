@@ -149,13 +149,13 @@
         <form id="gearForm" class="form">
         <div class="form-grid">
           <div class="form-field full-width">
-            <label class="field-label">Name *</label>
-            <input id="name" type="text" class="field-input" placeholder="e.g. Sleeping bag" required>
+            <label class="field-label" for="name">Name *</label>
+            <input id="name" type="text" class="field-input" placeholder="e.g. Sleeping bag" required autocomplete="off">
           </div>
         </div>
 
         <div class="form-section">
-          <label class="field-label">Category</label>
+          <label class="field-label" for="category">Category</label>
           <select id="category" class="field-input">
             <option value="">— No Category —</option>
             <!-- Categories populated dynamically based on user's category order -->
@@ -164,32 +164,32 @@
 
         <div class="form-grid">
           <div class="form-field">
-            <label class="field-label">Brand</label>
+            <label class="field-label" for="brand">Brand</label>
             <input id="brand" type="text" class="field-input" placeholder="e.g. Marmot" list="brand-list" autocomplete="off">
           </div>
           <div class="form-field">
-            <label class="field-label">Model</label>
+            <label class="field-label" for="model">Model</label>
             <input id="model" type="text" class="field-input" placeholder="e.g. Trestles 30" list="model-list" autocomplete="off">
           </div>
         </div>
 
         <div class="form-grid">
           <div class="form-field">
-            <label class="field-label">Weight (g)</label>
-            <input id="weight" type="number" class="field-input" min="0" step="1" placeholder="in grams">
+            <label class="field-label" for="weight">Weight (g)</label>
+            <input id="weight" type="number" class="field-input" min="0" step="1" placeholder="in grams" autocomplete="off">
           </div>
           <div class="form-field">
-            <label class="field-label">Price (₽)</label>
-            <input id="price" type="number" class="field-input" min="0" step="0.01" placeholder="in RUB">
+            <label class="field-label" for="price">Price (₽)</label>
+            <input id="price" type="number" class="field-input" min="0" step="0.01" placeholder="in RUB" autocomplete="off">
           </div>
           <div class="form-field">
-            <label class="field-label">Year of purchase</label>
-            <input id="year" type="number" class="field-input" min="1900" max="2100" step="1" placeholder="2024">
+            <label class="field-label" for="year">Year of purchase</label>
+            <input id="year" type="number" class="field-input" min="1900" max="2100" step="1" placeholder="2024" autocomplete="off">
           </div>
         </div>
 
         <div class="form-section">
-          <label class="field-label">Level of satisfaction</label>
+          <div class="field-label">Level of satisfaction</div>
           <div class="star-rating">
             <input type="radio" id="star5" name="rating" value="5">
             <label for="star5">★</label>
@@ -205,12 +205,12 @@
         </div>
 
         <div class="form-section">
-          <label class="field-label">Comment</label>
+          <label class="field-label" for="comment">Comment</label>
           <textarea id="comment" class="field-input" rows="2" maxlength="200" placeholder="Short note about this gear..."></textarea>
         </div>
 
         <div class="form-section">
-          <label class="field-label">Photo</label>
+          <label class="field-label" for="photo">Photo</label>
           <div class="modal-photo-section">
             <div class="modal-photo-container">
               <div class="photo-preview-wrapper" id="modalPhotoPreviewWrapper">
@@ -236,7 +236,7 @@
         </div>
 
         <div class="form-section">
-          <label class="field-label">Storage Location</label>
+          <label class="field-label" for="storage">Storage Location</label>
           <div style="display:flex;gap:8px;align-items:center;">
             <select id="storage" class="field-input" style="flex:1;">
               <option value="">No storage specified</option>
@@ -249,7 +249,7 @@
           </div>
           <div id="storageInlineForm" style="display:none;margin-top:8px;">
             <div style="display:flex;gap:8px;">
-              <input type="text" id="newStorageName" class="field-input" placeholder="New storage name..." style="flex:1;">
+              <input type="text" id="newStorageName" class="field-input" placeholder="New storage name..." style="flex:1;" aria-label="New storage name" autocomplete="off">
               <button type="button" id="saveStorageInline" class="btn primary" style="flex-shrink:0;">Save</button>
               <button type="button" id="cancelStorageInline" class="btn secondary" style="flex-shrink:0;">Cancel</button>
             </div>
@@ -257,13 +257,13 @@
         </div>
 
         <div class="form-section">
-          <label class="field-label">Visibility</label>
+          <div class="field-label">Visibility</div>
           <div id="gearVisibilityPicker"></div>
         </div>
 
         <div class="form-section" id="addToChecklistsSection" style="display:none;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-            <label class="field-label" style="margin:0;">Add to Checklists</label>
+            <div class="field-label" style="margin:0;">Add to Checklists</div>
             <button type="button" id="createChecklistInModal" class="btn icon" title="Create new checklist" style="flex-shrink:0;">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:18px;height:18px;">
                 <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" fill="currentColor"/>
@@ -272,7 +272,7 @@
           </div>
           <div id="checklistInlineForm" style="display:none;margin-bottom:8px;">
             <div style="display:flex;gap:8px;">
-              <input type="text" id="newChecklistName" class="field-input" placeholder="New checklist name..." style="flex:1;">
+              <input type="text" id="newChecklistName" class="field-input" placeholder="New checklist name..." style="flex:1;" aria-label="New checklist name" autocomplete="off">
               <button type="button" id="saveChecklistInline" class="btn primary" style="flex-shrink:0;">Save</button>
               <button type="button" id="cancelChecklistInline" class="btn secondary" style="flex-shrink:0;">Cancel</button>
             </div>
@@ -313,23 +313,23 @@
             <h3 class="section-title">Basic Information</h3>
             <div class="form-grid">
               <div class="form-field full-width">
-                <label class="field-label">Checklist Name *</label>
-                <input id="checklistName" type="text" class="field-input" placeholder="e.g. Weekend Hike" required>
+                <label class="field-label" for="checklistName">Checklist Name *</label>
+                <input id="checklistName" type="text" class="field-input" placeholder="e.g. Weekend Hike" required autocomplete="off">
               </div>
               <div class="form-field">
-                <label class="field-label">Start Date</label>
+                <label class="field-label" for="checklistStartDate">Start Date</label>
                 <input id="checklistStartDate" type="date" class="field-input">
               </div>
               <div class="form-field">
-                <label class="field-label">End Date</label>
+                <label class="field-label" for="checklistEndDate">End Date</label>
                 <input id="checklistEndDate" type="date" class="field-input">
               </div>
               <div class="form-field full-width">
-                <label class="field-label">Activity Tags</label>
+                <label class="field-label" for="newTagInput">Activity Tags</label>
                 <div class="tags-input-container">
                   <div class="tags-display" id="tagsDisplay"></div>
                   <div class="add-tag-section">
-                    <input id="newTagInput" type="text" class="tag-input" placeholder="Add tag...">
+                    <input id="newTagInput" type="text" class="tag-input" placeholder="Add tag..." autocomplete="off">
                     <button type="button" id="addTagBtn" class="add-tag-btn">+</button>
                   </div>
                 </div>
@@ -364,7 +364,7 @@
               </div>
             </h3>
             <div style="padding:8px 0 12px;">
-              <input id="checklistItemSearch" type="search" class="field-input" placeholder="Search gear by name, brand or model..." style="width:100%;">
+              <input id="checklistItemSearch" type="search" class="field-input" placeholder="Search gear by name, brand or model..." style="width:100%;" aria-label="Search gear by name, brand or model" autocomplete="off">
             </div>
             <div id="gearItemsCheckboxes" class="gear-items-grid"></div>
           </div>
@@ -482,17 +482,17 @@
           <!-- Email/Password Form -->
           <form id="authForm" class="form">
             <div class="form-section" id="nicknameSection" style="display:none;">
-              <label class="field-label">Nickname</label>
-              <input id="authNickname" type="text" class="field-input" placeholder="Your name">
+              <label class="field-label" for="authNickname">Nickname</label>
+              <input id="authNickname" type="text" class="field-input" placeholder="Your name" autocomplete="name">
             </div>
             <div class="form-section">
-              <label class="field-label">Email</label>
-              <input id="authEmail" type="email" class="field-input" required placeholder="your@email.com">
+              <label class="field-label" for="authEmail">Email</label>
+              <input id="authEmail" type="email" class="field-input" required placeholder="your@email.com" autocomplete="email">
             </div>
             <div class="form-section">
-              <label class="field-label">Password</label>
+              <label class="field-label" for="authPassword">Password</label>
               <div class="password-field">
-                <input id="authPassword" type="password" class="field-input" required placeholder="••••••••" minlength="6">
+                <input id="authPassword" type="password" class="field-input" required placeholder="••••••••" minlength="6" autocomplete="current-password">
                 <button id="authPasswordToggle" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false" title="Show password">
                   <svg class="password-toggle-icon password-toggle-icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M2.25 12s3.5-6.5 9.75-6.5S21.75 12 21.75 12s-3.5 6.5-9.75 6.5S2.25 12 2.25 12z"></path>
@@ -553,7 +553,7 @@
               </svg>
             </button>
           </div>
-          <input type="file" id="avatarInput" accept="image/*" style="display:none;">
+          <input type="file" id="avatarInput" accept="image/*" style="display:none;" aria-label="Avatar image">
           <div id="avatarMessage" class="muted small-space"></div>
 
           <div class="profile-actions-vertical">
@@ -563,18 +563,18 @@
 
         <div class="profile-right">
           <div class="form-group">
-            <label class="form-label">Nickname</label>
-            <input id="profileNickname" type="text" class="form-input" placeholder="Your name">
+            <label class="form-label" for="profileNickname">Nickname</label>
+            <input id="profileNickname" type="text" class="form-input" placeholder="Your name" autocomplete="name">
           </div>
 
           <div class="form-group">
-            <label class="form-label">Email</label>
-            <input id="profileEmail" type="email" class="form-input readonly" readonly>
+            <label class="form-label" for="profileEmail">Email</label>
+            <input id="profileEmail" type="email" class="form-input readonly" readonly autocomplete="email">
           </div>
 
           <div class="form-group">
-            <label class="form-label">New Password <span class="muted">(leave empty to keep current)</span></label>
-            <input id="profilePassword" type="password" class="form-input" placeholder="••••••••" minlength="6">
+            <label class="form-label" for="profilePassword">New Password <span class="muted">(leave empty to keep current)</span></label>
+            <input id="profilePassword" type="password" class="form-input" placeholder="••••••••" minlength="6" autocomplete="new-password">
           </div>
 
           <div id="profileError" class="form-note error" style="display:none;"></div>
@@ -612,7 +612,7 @@
         <div id="shareContent" style="display:none;">
           <p class="share-description">Share this link with others. They can view the item and save it to their collection.</p>
           <div class="share-link-wrapper">
-            <input id="shareLinkInput" type="text" readonly class="share-link-input">
+            <input id="shareLinkInput" type="text" readonly class="share-link-input" aria-label="Share link" autocomplete="off">
             <button id="copyShareLink" class="btn primary copy-btn">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
@@ -677,7 +677,7 @@
         <div id="shareChecklistContent" style="display:none;">
           <p class="share-description">Share this link with others. They can view the checklist and save items to their collection.</p>
           <div class="share-link-wrapper">
-            <input id="shareChecklistLinkInput" type="text" readonly class="share-link-input">
+            <input id="shareChecklistLinkInput" type="text" readonly class="share-link-input" aria-label="Share checklist link" autocomplete="off">
             <button id="copyShareChecklistLink" class="btn primary copy-btn">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
@@ -839,7 +839,7 @@
         <details id="addStorageForm" class="manage-storage-form add-storage-form">
           <summary class="manage-storage-form-header">
             <div>
-              <label class="field-label">New Storage Location</label>
+              <div class="field-label">New Storage Location</div>
               <div class="form-hint">Create a place where gear can be stored and filtered later.</div>
             </div>
           </summary>
@@ -847,13 +847,13 @@
             <div class="add-storage-row add-storage-name-rating-row">
               <div class="manage-storage-field add-storage-name-field">
                 <label class="field-label" for="newStorageNameInManage">Storage name *</label>
-                <input type="text" id="newStorageNameInManage" class="field-input" placeholder="Garage, Closet, Car trunk" title="Required. Used in storage filters and item cards.">
+                <input type="text" id="newStorageNameInManage" class="field-input" placeholder="Garage, Closet, Car trunk" title="Required. Used in storage filters and item cards." autocomplete="off">
                 <div class="form-hint">Used in storage filters and item cards.</div>
               </div>
               <div class="manage-storage-field manage-storage-field-rating add-storage-rating-field">
-                <label class="field-label" for="newStorageRatingInManage">Rating</label>
+                <div class="field-label" id="newStorageRatingLabel">Rating</div>
                 <input type="hidden" id="newStorageRatingInManage" value="0">
-                <div class="storage-rating-stars" data-rating-input="newStorageRatingInManage" role="radiogroup" aria-label="Storage rating">
+                <div class="storage-rating-stars" data-rating-input="newStorageRatingInManage" role="radiogroup" aria-labelledby="newStorageRatingLabel">
                   <button type="button" class="storage-rating-star" data-rating-value="1" aria-label="1 star">★</button>
                   <button type="button" class="storage-rating-star" data-rating-value="2" aria-label="2 stars">★</button>
                   <button type="button" class="storage-rating-star" data-rating-value="3" aria-label="3 stars">★</button>
@@ -865,7 +865,7 @@
             </div>
             <div class="manage-storage-field add-storage-address-field">
               <label class="field-label" for="newStorageAddressInManage">Address</label>
-              <input type="text" id="newStorageAddressInManage" class="field-input" placeholder="Street, building, room" title="Optional physical location.">
+              <input type="text" id="newStorageAddressInManage" class="field-input" placeholder="Street, building, room" title="Optional physical location." autocomplete="off">
               <div class="form-hint">Optional physical location.</div>
             </div>
             <div class="manage-storage-field manage-storage-field-description add-storage-description-field">
@@ -925,18 +925,18 @@
           <div class="manage-storage-form-grid">
             <div class="manage-storage-field">
               <label class="field-label" for="editStorageNameInput">Storage name *</label>
-              <input type="text" id="editStorageNameInput" class="field-input" placeholder="Garage, Closet, Car trunk" title="Required. Used in storage filters and item cards.">
+              <input type="text" id="editStorageNameInput" class="field-input" placeholder="Garage, Closet, Car trunk" title="Required. Used in storage filters and item cards." autocomplete="off">
               <span class="field-hint">Used in storage filters and item cards.</span>
             </div>
             <div class="manage-storage-field">
               <label class="field-label" for="editStorageAddressInput">Address</label>
-              <input type="text" id="editStorageAddressInput" class="field-input" placeholder="Street, building, room" title="Optional physical location.">
+              <input type="text" id="editStorageAddressInput" class="field-input" placeholder="Street, building, room" title="Optional physical location." autocomplete="off">
               <span class="field-hint">Optional physical location.</span>
             </div>
             <div class="manage-storage-field manage-storage-field-rating">
-              <label class="field-label" for="editStorageRatingInput">Rating</label>
+              <div class="field-label" id="editStorageRatingLabel">Rating</div>
               <input type="hidden" id="editStorageRatingInput" value="0">
-              <div class="storage-rating-stars" data-rating-input="editStorageRatingInput" role="radiogroup" aria-label="Storage rating">
+              <div class="storage-rating-stars" data-rating-input="editStorageRatingInput" role="radiogroup" aria-labelledby="editStorageRatingLabel">
                 <button type="button" class="storage-rating-star" data-rating-value="1" aria-label="1 star">★</button>
                 <button type="button" class="storage-rating-star" data-rating-value="2" aria-label="2 stars">★</button>
                 <button type="button" class="storage-rating-star" data-rating-value="3" aria-label="3 stars">★</button>

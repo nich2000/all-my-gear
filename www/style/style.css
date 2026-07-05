@@ -950,7 +950,7 @@ input[type=text], input[type=number], select, input[type=search], input[type=fil
 
 /* Toolbar that sits above the categories */
 .category-order-toolbar{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;margin-bottom:8px;flex-wrap:wrap;gap:12px}
-.category-order-toolbar-inner{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+.category-order-toolbar-inner{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 
 /* Search wrapper in toolbar */
 .toolbar-search-wrapper{display:flex;align-items:center;background:rgba(110,122,105,0.08);padding:6px 12px;border-radius:8px;border:1px solid rgba(110,122,105,0.15);gap:8px}

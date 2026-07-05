@@ -10,7 +10,9 @@ const {
   normalizeGearCategory,
   getRenderableGearCategories,
   getStorageFilterLabel,
+  shouldProcessImageFileBeforePreview,
   matchesStorageFilter,
+  shouldRefreshImageUrlOnError,
   shouldCollapseCategory,
   shouldCollapseChecklist
 } = require('../www/js/app-helpers.js')
@@ -49,6 +51,24 @@ test('orders non-empty gear categories before optional empty categories', () => 
   assert.deepEqual(
     getRenderableGearCategories(categories, grouped, true),
     ['Shelter', 'Cooking', 'Sleep System', 'Lighting']
+  )
+})
+
+test('renders non-empty gear categories missing from the saved category order', () => {
+  const categories = ['Shelter', 'Sleep System']
+  const grouped = {
+    Shelter: [{ id: 'tent' }],
+    Electronics: [{ id: 'gps' }]
+  }
+
+  assert.deepEqual(
+    getRenderableGearCategories(categories, grouped, false),
+    ['Shelter', 'Electronics']
+  )
+
+  assert.deepEqual(
+    getRenderableGearCategories(categories, grouped, true),
+    ['Shelter', 'Electronics', 'Sleep System']
   )
 })
 
@@ -111,4 +131,24 @@ test('collapses checklist sections by default while preserving explicit state', 
   assert.equal(shouldCollapseChecklist({}, 'checklist-1'), true)
   assert.equal(shouldCollapseChecklist({ 'checklist-1': false }, 'checklist-1'), false)
   assert.equal(shouldCollapseChecklist({ 'checklist-1': true }, 'checklist-1'), true)
+})
+
+test('processes HEIC files before preview even when they are under the size limit', () => {
+  assert.equal(shouldProcessImageFileBeforePreview({
+    name: 'IMG_0001.HEIC',
+    type: 'image/heic',
+    size: 24 * 1024
+  }, 1024 * 1024), true)
+
+  assert.equal(shouldProcessImageFileBeforePreview({
+    name: 'photo.jpg',
+    type: 'image/jpeg',
+    size: 24 * 1024
+  }, 1024 * 1024), false)
+})
+
+test('does not refresh inline data image URLs after image load errors', () => {
+  assert.equal(shouldRefreshImageUrlOnError('data:image/heic;base64,abc'), false)
+  assert.equal(shouldRefreshImageUrlOnError('data:image/jpeg;base64,abc'), false)
+  assert.equal(shouldRefreshImageUrlOnError('users/user-1/item-1.jpg'), true)
 })

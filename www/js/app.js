@@ -119,7 +119,25 @@
     })
   }
 
+  function normalizeStorageRatingAccessibility() {
+    document.querySelectorAll('.storage-rating-stars[data-rating-input]').forEach(group => {
+      const inputId = group.dataset.ratingInput
+      const input = inputId ? document.getElementById(inputId) : null
+      if (!input || input.type !== 'hidden') return
+
+      const label = document.querySelector(`label[for="${inputId}"]`)
+      if (!label) return
+
+      const labelId = label.id || `${inputId}Label`
+      label.id = labelId
+      label.removeAttribute('for')
+      group.setAttribute('aria-labelledby', labelId)
+      group.removeAttribute('aria-label')
+    })
+  }
+
   function initializeStorageRatingStars() {
+    normalizeStorageRatingAccessibility()
     document.querySelectorAll('.storage-rating-stars').forEach(group => {
       const input = document.getElementById(group.dataset.ratingInput)
       group.querySelectorAll('.storage-rating-star').forEach(star => {
@@ -135,6 +153,17 @@
   }
 
   initializeStorageRatingStars()
+
+  function normalizeGeneratedFormControlNames() {
+    document.querySelectorAll('select.category-sort-select').forEach(select => {
+      if (select.name) return
+      if (select.classList.contains('checklist-sort-select')) {
+        select.name = 'checklistCategorySort'
+      } else {
+        select.name = 'categorySort'
+      }
+    })
+  }
 
   // Function to smoothly animate background color transition
   function animateBackgroundTransition(targetColors, isFromGear = false) {
@@ -400,7 +429,7 @@
     section.style.display = 'block'
     container.innerHTML = editableChecklists.map(cl => `
       <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-        <input type="checkbox" class="add-to-checklist-checkbox" data-checklist-id="${cl.id}" style="cursor:pointer;width:18px;height:18px;">
+        <input type="checkbox" name="addToChecklist" class="add-to-checklist-checkbox" data-checklist-id="${cl.id}" style="cursor:pointer;width:18px;height:18px;">
         <span style="font-size:13px;">${cl.name}</span>
       </label>
     `).join('')
@@ -626,7 +655,7 @@
               <div class="card-expanded-photo">
                 <div class="photo-container" data-id="${it.id}">
                   ${it.image ? `<img src="${it.image}" alt="${escapeHtml(it.name)}">` : 'No photo'}
-                  <input class="edit-field photo-file-input" type="file" accept="image/*,.heic,.heif" data-field="photo" data-id="${it.id}" style="display: none;">
+                  <input class="edit-field photo-file-input" type="file" name="photo" accept="image/*,.heic,.heif" data-field="photo" data-id="${it.id}" style="display: none;">
                   <div class="photo-overlay-buttons">
                     <button class="photo-overlay-btn" data-action="replace-photo" data-id="${it.id}" title="Replace photo">
                       <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -707,21 +736,21 @@
           <div class="card-edit-form hidden">
             <div class="edit-fields">
               <div class="edit-section">
-                <label>Name *</label>
-                <input class="edit-field" type="text" placeholder="e.g. Sleeping bag" data-field="name" value="${escapeHtml(it.name)}" required>
+                <div class="field-label">Name *</div>
+                <input class="edit-field" type="text" name="name" placeholder="e.g. Sleeping bag" data-field="name" value="${escapeHtml(it.name)}" required aria-label="Name" autocomplete="off">
               </div>
               <div class="edit-row">
                 <div class="edit-section" style="flex:1">
-                  <label>Brand</label>
-                  <input class="edit-field" type="text" placeholder="e.g. Marmot" data-field="brand" value="${escapeHtml(it.brand||'')}" list="inline-brand-list-${it.id}">
+                  <div class="field-label">Brand</div>
+                  <input class="edit-field" type="text" name="brand" placeholder="e.g. Marmot" data-field="brand" value="${escapeHtml(it.brand||'')}" list="inline-brand-list-${it.id}" aria-label="Brand" autocomplete="off">
                 </div>
                 <div class="edit-section" style="flex:1">
-                  <label>Model</label>
-                  <input class="edit-field" type="text" placeholder="e.g. Trestles 30" data-field="model" value="${escapeHtml(it.model||'')}" list="inline-model-list-${it.id}">
+                  <div class="field-label">Model</div>
+                  <input class="edit-field" type="text" name="model" placeholder="e.g. Trestles 30" data-field="model" value="${escapeHtml(it.model||'')}" list="inline-model-list-${it.id}" aria-label="Model" autocomplete="off">
                 </div>
               </div>
               <div class="edit-section" style="display:flex;align-items:center;gap:10px;flex-direction:row">
-                <label style="margin:0;font-size:10px;white-space:nowrap">Level of satisfaction</label>
+                <div class="field-label" style="margin:0;font-size:10px;white-space:nowrap">Level of satisfaction</div>
                 <div class="star-rating-inline" data-id="${it.id}">
                   ${[5,4,3,2,1].map(val => `
                     <input type="radio" id="star${val}-${it.id}" name="rating-${it.id}" value="${val}" ${it.rating === val ? 'checked' : ''}>
@@ -731,28 +760,28 @@
               </div>
               <div class="edit-row">
                 <div class="edit-section" style="flex:1">
-                  <label>Weight (g)</label>
-                  <input class="edit-field" type="number" placeholder="in grams" data-field="weight" value="${it.weight}" min="0" step="1">
+                  <div class="field-label">Weight (g)</div>
+                  <input class="edit-field" type="number" name="weight" placeholder="in grams" data-field="weight" value="${it.weight}" min="0" step="1" aria-label="Weight in grams" autocomplete="off">
                 </div>
                 <div class="edit-section" style="flex:1">
-                  <label>Price (₽)</label>
-                  <input class="edit-field" type="number" placeholder="in RUB" data-field="price" value="${it.price||''}" min="0" step="0.01">
+                  <div class="field-label">Price (₽)</div>
+                  <input class="edit-field" type="number" name="price" placeholder="in RUB" data-field="price" value="${it.price||''}" min="0" step="0.01" aria-label="Price in RUB" autocomplete="off">
                 </div>
                 <div class="edit-section" style="flex:1">
-                  <label>Year of purchase</label>
-                  <input class="edit-field" type="number" placeholder="Year" data-field="year" value="${it.year||''}" min="1900" max="2100" step="1">
+                  <div class="field-label">Year of purchase</div>
+                  <input class="edit-field" type="number" name="year" placeholder="Year" data-field="year" value="${it.year||''}" min="1900" max="2100" step="1" aria-label="Year of purchase" autocomplete="off">
                 </div>
               </div>
               <div class="edit-section">
-                <select class="edit-field" data-field="category" style="text-transform:uppercase;font-size:11px;letter-spacing:0.5px;font-weight:500;padding:10px;">
+                <select class="edit-field" name="category" data-field="category" aria-label="Category" style="text-transform:uppercase;font-size:11px;letter-spacing:0.5px;font-weight:500;padding:10px;">
                   <option value="">— No Category —</option>
                   ${renderCategoryOptions(it.category)}
                 </select>
               </div>
               <div class="edit-section">
-                <label>Storage location</label>
+                <div class="field-label">Storage location</div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                  <select class="edit-field" data-field="storageId" style="flex:1;">
+                  <select class="edit-field" name="storageId" data-field="storageId" aria-label="Storage location" style="flex:1;">
                     <option value="">No storage specified</option>
                     ${storages.map(st => `<option value="${st.id}" ${it.storageId === st.id ? 'selected' : ''}>${escapeHtml(st.name)}</option>`).join('')}
                   </select>
@@ -764,22 +793,22 @@
                 </div>
                 <div class="storage-inline-form-edit" data-item-id="${it.id}" style="display:none;margin-top:8px;">
                   <div style="display:flex;gap:8px;">
-                    <input type="text" class="edit-field new-storage-name-edit" placeholder="New storage name..." style="flex:1;">
+                    <input type="text" name="newStorageName" class="edit-field new-storage-name-edit" placeholder="New storage name..." style="flex:1;" aria-label="New storage name" autocomplete="off">
                     <button type="button" class="btn primary save-storage-inline-edit" data-item-id="${it.id}" style="flex-shrink:0;">Save</button>
                     <button type="button" class="btn secondary cancel-storage-inline-edit" data-item-id="${it.id}" style="flex-shrink:0;">Cancel</button>
                   </div>
                 </div>
               </div>
               <div class="edit-section">
-                <label>Visibility</label>
+                <div class="field-label">Visibility</div>
                 <div class="inline-visibility-picker" data-item-id="${it.id}"></div>
               </div>
               <div class="edit-section">
-                <label>In Checklists</label>
+                <div class="field-label">In Checklists</div>
                 <div class="edit-checklists-container" style="max-height:200px;overflow-y:auto;padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;">
                   ${checklists.filter(canEditResource).length === 0 ? '<p style="font-size:12px;color:#888;margin:0;">No editable checklists</p>' : checklists.filter(canEditResource).map(cl => `
                     <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
-                      <input type="checkbox" class="edit-checklist-checkbox" data-checklist-id="${cl.id}" data-item-id="${it.id}" ${cl.items.find(i => i.itemId === it.id) ? 'checked' : ''} style="cursor:pointer;width:18px;height:18px;">
+                      <input type="checkbox" name="editChecklist" class="edit-checklist-checkbox" data-checklist-id="${cl.id}" data-item-id="${it.id}" ${cl.items.find(i => i.itemId === it.id) ? 'checked' : ''} style="cursor:pointer;width:18px;height:18px;">
                       <span style="font-size:13px;">${escapeHtml(cl.name)}</span>
                     </label>
                   `).join('')}
@@ -792,15 +821,15 @@
                 </button>
                 <div class="checklist-inline-form-edit" data-item-id="${it.id}" style="display:none;margin-top:8px;">
                   <div style="display:flex;gap:8px;">
-                    <input type="text" class="edit-field new-checklist-name-edit" placeholder="New checklist name..." style="flex:1;">
+                    <input type="text" name="newChecklistName" class="edit-field new-checklist-name-edit" placeholder="New checklist name..." style="flex:1;" aria-label="New checklist name" autocomplete="off">
                     <button type="button" class="btn primary save-checklist-inline-edit" data-item-id="${it.id}" style="flex-shrink:0;">Save</button>
                     <button type="button" class="btn secondary cancel-checklist-inline-edit" data-item-id="${it.id}" style="flex-shrink:0;">Cancel</button>
                   </div>
                 </div>
               </div>
               <div class="edit-section">
-                <label>Comment</label>
-                <textarea class="edit-field" placeholder="Short note..." data-field="comment" rows="2" maxlength="200">${escapeHtml(it.comment||'')}</textarea>
+                <div class="field-label">Comment</div>
+                <textarea class="edit-field" name="comment" placeholder="Short note..." data-field="comment" rows="2" maxlength="200" aria-label="Comment">${escapeHtml(it.comment||'')}</textarea>
               </div>
               <div class="edit-actions">
                 <button class="btn primary save-edit" data-id="${it.id}" aria-label="Save">Save</button>
@@ -867,7 +896,7 @@
             <button class="category-sort-type-btn" data-category="${escapeHtml(catName)}" title="Choose sort type" aria-label="Choose sort type">
               <span class="sort-label">Name</span>
             </button>
-            <select class="category-sort-select" data-category="${escapeHtml(catName)}">
+            <select class="category-sort-select" name="categorySort" data-category="${escapeHtml(catName)}">
               <option value="name" selected>Name</option>
               <option value="weight">Weight</option>
               <option value="price">Price</option>
@@ -995,7 +1024,7 @@
             <div class=\"card-expanded-header\">
               <div class=\"card-expanded-photo\">
                 <div class=\"photo-container\" data-id=\"${it.id}\">${it.image ? `<img src=\"${it.image}\" alt=\"${escapeHtml(it.name)}\">` : 'No photo'}
-                  <input class=\"edit-field photo-file-input\" type=\"file\" accept=\"image/*\" data-field=\"photo\" data-id=\"${it.id}\" style=\"display: none;\">
+                  <input class=\"edit-field photo-file-input\" type=\"file\" name=\"photo\" accept=\"image/*\" data-field=\"photo\" data-id=\"${it.id}\" style=\"display: none;\">
                   <div class=\"photo-overlay-buttons\">
                     <button class=\"photo-overlay-btn\" data-action=\"replace-photo\" data-id=\"${it.id}\" title=\"Replace photo\">
                       <svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\">
@@ -1076,21 +1105,21 @@
           <div class=\"card-edit-form hidden\">
             <div class=\"edit-fields\">
               <div class=\"edit-section\">
-                <label>Name *</label>
-                <input class=\"edit-field\" type=\"text\" placeholder=\"e.g. Sleeping bag\" data-field=\"name\" value=\"${escapeHtml(it.name)}\" required>
+                <div class=\"field-label\">Name *</div>
+                <input class=\"edit-field\" type=\"text\" name=\"name\" placeholder=\"e.g. Sleeping bag\" data-field=\"name\" value=\"${escapeHtml(it.name)}\" required aria-label=\"Name\" autocomplete=\"off\">
               </div>
               <div class=\"edit-row\">
                 <div class=\"edit-section\" style=\"flex:1\">
-                  <label>Brand</label>
-                  <input class=\"edit-field\" type=\"text\" placeholder=\"e.g. Marmot\" data-field=\"brand\" value=\"${escapeHtml(it.brand||'')}\" list=\"inline-brand-list-${it.id}\">
+                  <div class=\"field-label\">Brand</div>
+                  <input class=\"edit-field\" type=\"text\" name=\"brand\" placeholder=\"e.g. Marmot\" data-field=\"brand\" value=\"${escapeHtml(it.brand||'')}\" list=\"inline-brand-list-${it.id}\" aria-label=\"Brand\" autocomplete=\"off\">
                 </div>
                 <div class=\"edit-section\" style=\"flex:1\">
-                  <label>Model</label>
-                  <input class=\"edit-field\" type=\"text\" placeholder=\"e.g. Trestles 30\" data-field=\"model\" value=\"${escapeHtml(it.model||'')}\" list=\"inline-model-list-${it.id}\">
+                  <div class=\"field-label\">Model</div>
+                  <input class=\"edit-field\" type=\"text\" name=\"model\" placeholder=\"e.g. Trestles 30\" data-field=\"model\" value=\"${escapeHtml(it.model||'')}\" list=\"inline-model-list-${it.id}\" aria-label=\"Model\" autocomplete=\"off\">
                 </div>
               </div>
               <div class=\"edit-section\" style=\"display:flex;align-items:center;gap:10px;flex-direction:row\">
-                <label style=\"margin:0;font-size:10px;white-space:nowrap\">Level of satisfaction</label>
+                <div class=\"field-label\" style=\"margin:0;font-size:10px;white-space:nowrap\">Level of satisfaction</div>
                 <div class=\"star-rating-inline\" data-id=\"${it.id}\">${[5,4,3,2,1].map(val => `
                     <input type=\"radio\" id=\"star${val}-${it.id}\" name=\"rating-${it.id}\" value=\"${val}\" ${it.rating === val ? 'checked' : ''}>
                     <label for=\"star${val}-${it.id}\" title=\"${val} star${val>1?'s':''}\">★</label>
@@ -1099,29 +1128,29 @@
               </div>
               <div class=\"edit-row\">
                 <div class=\"edit-section\" style=\"flex:1\">
-                  <label>Weight (g)</label>
-                  <input class=\"edit-field\" type=\"number\" placeholder=\"in grams\" data-field=\"weight\" value=\"${it.weight}\" min=\"0\" step=\"1\">
+                  <div class=\"field-label\">Weight (g)</div>
+                  <input class=\"edit-field\" type=\"number\" name=\"weight\" placeholder=\"in grams\" data-field=\"weight\" value=\"${it.weight}\" min=\"0\" step=\"1\" aria-label=\"Weight in grams\" autocomplete=\"off\">
                 </div>
                 <div class=\"edit-section\" style=\"flex:1\">
-                  <label>Price (₽)</label>
-                  <input class=\"edit-field\" type=\"number\" placeholder=\"in RUB\" data-field=\"price\" value=\"${it.price||''}\" min=\"0\" step=\"0.01\">
+                  <div class=\"field-label\">Price (₽)</div>
+                  <input class=\"edit-field\" type=\"number\" name=\"price\" placeholder=\"in RUB\" data-field=\"price\" value=\"${it.price||''}\" min=\"0\" step=\"0.01\" aria-label=\"Price in RUB\" autocomplete=\"off\">
                 </div>
                 <div class=\"edit-section\" style=\"flex:1\">
-                  <label>Year of purchase</label>
-                  <input class=\"edit-field\" type=\"number\" placeholder=\"2024\" data-field=\"year\" value=\"${it.year||''}\" min=\"1900\" max=\"2100\" step=\"1\">
+                  <div class=\"field-label\">Year of purchase</div>
+                  <input class=\"edit-field\" type=\"number\" name=\"year\" placeholder=\"2024\" data-field=\"year\" value=\"${it.year||''}\" min=\"1900\" max=\"2100\" step=\"1\" aria-label=\"Year of purchase\" autocomplete=\"off\">
                 </div>
               </div>
               <div class=\"edit-section\">
-                <label>Category</label>
-                <select class=\"edit-field\" data-field=\"category\">
+                <div class=\"field-label\">Category</div>
+                <select class=\"edit-field\" name=\"category\" data-field=\"category\" aria-label=\"Category\">
                   <option value=\"\">— No Category —</option>
                   ${renderCategoryOptions(it.category)}
                 </select>
               </div>
               <div class=\"edit-section\">
-                <label>Storage location</label>
+                <div class=\"field-label\">Storage location</div>
                 <div style=\"display:flex;gap:8px;align-items:center;\">
-                  <select class=\"edit-field\" data-field=\"storageId\" style=\"flex:1;\">
+                  <select class=\"edit-field\" name=\"storageId\" data-field=\"storageId\" aria-label=\"Storage location\" style=\"flex:1;\">
                     <option value=\"\">No storage specified</option>
                     ${storages.map(st => `<option value=\"${st.id}\" ${it.storageId === st.id ? 'selected' : ''}>${escapeHtml(st.name)}</option>`).join('')}
                   </select>
@@ -1133,22 +1162,22 @@
                 </div>
                 <div class=\"storage-inline-form-edit\" data-item-id=\"${it.id}\" style=\"display:none;margin-top:8px;\">
                   <div style=\"display:flex;gap:8px;\">
-                    <input type=\"text\" class=\"edit-field new-storage-name-edit\" placeholder=\"New storage name...\" style=\"flex:1;\">
+                    <input type=\"text\" name=\"newStorageName\" class=\"edit-field new-storage-name-edit\" placeholder=\"New storage name...\" style=\"flex:1;\" aria-label=\"New storage name\" autocomplete=\"off\">
                     <button type=\"button\" class=\"btn primary save-storage-inline-edit\" data-item-id=\"${it.id}\" style=\"flex-shrink:0;\">Save</button>
                     <button type=\"button\" class=\"btn secondary cancel-storage-inline-edit\" data-item-id=\"${it.id}\" style=\"flex-shrink:0;\">Cancel</button>
                   </div>
                 </div>
               </div>
               <div class=\"edit-section\">
-                <label>Visibility</label>
+                <div class=\"field-label\">Visibility</div>
                 <div class=\"inline-visibility-picker\" data-item-id=\"${it.id}\"></div>
               </div>
               <div class=\"edit-section\">
-                <label>In Checklists</label>
+                <div class=\"field-label\">In Checklists</div>
                 <div class=\"edit-checklists-container\" style=\"max-height:200px;overflow-y:auto;padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;\">
                   ${checklists.filter(canEditResource).length === 0 ? '<p style=\"font-size:12px;color:#888;margin:0;\">No editable checklists</p>' : checklists.filter(canEditResource).map(cl => `
                     <label style=\"display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;\">
-                      <input type=\"checkbox\" class=\"edit-checklist-checkbox\" data-checklist-id=\"${cl.id}\" data-item-id=\"${it.id}\" ${cl.items.find(i => i.itemId === it.id) ? 'checked' : ''} style=\"cursor:pointer;width:18px;height:18px;\">
+                      <input type=\"checkbox\" name=\"editChecklist\" class=\"edit-checklist-checkbox\" data-checklist-id=\"${cl.id}\" data-item-id=\"${it.id}\" ${cl.items.find(i => i.itemId === it.id) ? 'checked' : ''} style=\"cursor:pointer;width:18px;height:18px;\">
                       <span style=\"font-size:13px;\">${escapeHtml(cl.name)}</span>
                     </label>
                   `).join('')}
@@ -1161,15 +1190,15 @@
                 </button>
                 <div class=\"checklist-inline-form-edit\" data-item-id=\"${it.id}\" style=\"display:none;margin-top:8px;\">
                   <div style=\"display:flex;gap:8px;\">
-                    <input type=\"text\" class=\"edit-field new-checklist-name-edit\" placeholder=\"New checklist name...\" style=\"flex:1;\">
+                    <input type=\"text\" name=\"newChecklistName\" class=\"edit-field new-checklist-name-edit\" placeholder=\"New checklist name...\" style=\"flex:1;\" aria-label=\"New checklist name\" autocomplete=\"off\">
                     <button type=\"button\" class=\"btn primary save-checklist-inline-edit\" data-item-id=\"${it.id}\" style=\"flex-shrink:0;\">Save</button>
                     <button type=\"button\" class=\"btn secondary cancel-checklist-inline-edit\" data-item-id=\"${it.id}\" style=\"flex-shrink:0;\">Cancel</button>
                   </div>
                 </div>
               </div>
               <div class=\"edit-section\">
-                <label>Comment</label>
-                <textarea class=\"edit-field\" placeholder=\"Short note...\" data-field=\"comment\" rows=\"2\" maxlength=\"200\">${escapeHtml(it.comment||'')}</textarea>
+                <div class=\"field-label\">Comment</div>
+                <textarea class=\"edit-field\" name=\"comment\" placeholder=\"Short note...\" data-field=\"comment\" rows=\"2\" maxlength=\"200\" aria-label=\"Comment\">${escapeHtml(it.comment||'')}</textarea>
               </div>
               <div class=\"edit-actions\">
                 <button class=\"btn primary save-edit\" data-id=\"${it.id}\" aria-label=\"Save\">Save</button>
@@ -1216,7 +1245,7 @@
                 const checked = currentStorageFilters.includes(st.id) ? 'checked' : ''
                 return `
                   <label class="toolbar-storage-option">
-                    <input type="checkbox" value="${escapeHtml(st.id)}" ${checked}>
+                    <input type="checkbox" name="storageFilter" value="${escapeHtml(st.id)}" ${checked}>
                     <span>${escapeHtml(st.name)}</span>
                   </label>
                 `
@@ -1402,6 +1431,7 @@
     countEl.textContent = totalCount
     if(totalWeightEl) totalWeightEl.textContent = formatWeight(totalWeight)
     totalPriceEl.textContent = Number(totalPrice).toLocaleString('en-US', {maximumFractionDigits:2})
+    normalizeGeneratedFormControlNames()
   }
 
   function updateTotals(){
@@ -2091,8 +2121,8 @@
         return
       }
       try{
-        // If file already small, still convert to dataURL for preview, otherwise process
-        if(f.size <= MAX_IMAGE_SIZE){
+        // HEIC needs conversion even when it is already below the size limit.
+        if(!appHelpers.shouldProcessImageFileBeforePreview(f, MAX_IMAGE_SIZE)){
           const data = await readFileAsDataURL(f)
           currentPhotoData = data
           photoPreview.src = data
@@ -2368,7 +2398,7 @@
       }
 
       try{
-        if(f.size <= MAX_IMAGE_SIZE){
+        if(!appHelpers.shouldProcessImageFileBeforePreview(f, MAX_IMAGE_SIZE)){
           const data = await readFileAsDataURL(f)
           input.dataset.photoData = data
           input.dataset.photoChanged = 'true'
@@ -2995,7 +3025,7 @@
           const label = document.createElement('label')
           label.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;'
           label.innerHTML = `
-            <input type="checkbox" class="edit-checklist-checkbox" data-checklist-id="${newChecklist.id}" data-item-id="${itemId}" checked style="cursor:pointer;width:18px;height:18px;">
+            <input type="checkbox" name="editChecklist" class="edit-checklist-checkbox" data-checklist-id="${newChecklist.id}" data-item-id="${itemId}" checked style="cursor:pointer;width:18px;height:18px;">
             <span style="font-size:13px;">${escapeHtml(checklistName)}</span>
           `
           container.appendChild(label)
@@ -3937,7 +3967,7 @@
           ` : ''}
           <div class="category-stats" style="flex:0 1 auto;">
             ${storages.length > 0 ? `
-              <select class="checklist-storage-filter" data-checklist-id="${checklist.id}" title="Filter by storage">
+              <select class="checklist-storage-filter" name="checklistStorageFilter" data-checklist-id="${checklist.id}" title="Filter by storage">
                 <option value="">All storages</option>
                 ${storages.map(st => {
                   const selected = currentChecklistStorageFilter[checklist.id] === st.id ? 'selected' : ''
@@ -4069,7 +4099,7 @@
                 <button class="category-sort-type-btn checklist-sort-type" data-category="${escapeHtml(catName)}" data-checklist-id="${checklist.id}" title="Choose sort type">
                   <span class="sort-label">${sortLabels[savedSort.type]}</span>
                 </button>
-                <select class="category-sort-select checklist-sort-select" data-category="${escapeHtml(catName)}" data-checklist-id="${checklist.id}">
+                <select class="category-sort-select checklist-sort-select" name="checklistCategorySort" data-category="${escapeHtml(catName)}" data-checklist-id="${checklist.id}">
                   <option value="name" ${savedSort.type === 'name' ? 'selected' : ''}>Name</option>
                   <option value="weight" ${savedSort.type === 'weight' ? 'selected' : ''}>Weight</option>
                   <option value="price" ${savedSort.type === 'price' ? 'selected' : ''}>Price</option>
@@ -4181,7 +4211,7 @@
             </svg>
           </button>
           ` : ''}
-          <input type="checkbox" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}" ${canEditChecklist ? '' : 'disabled'}>
+          <input type="checkbox" name="checklistItem" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}" ${canEditChecklist ? '' : 'disabled'}>
         </div>
       </div>
       <div class="card-expanded-content">
@@ -4223,7 +4253,7 @@
             </svg>
           </button>
           ` : ''}
-          <input type="checkbox" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}" ${canEditChecklist ? '' : 'disabled'}>
+          <input type="checkbox" name="checklistItem" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}" ${canEditChecklist ? '' : 'disabled'}>
         </div>
       </div>
     `
@@ -5361,7 +5391,7 @@
         <div class="item-selector" id="itemSelector">
           ${itemsToShow.map(item => `
             <label class="selector-item">
-              <input type="checkbox" value="${item.id}" class="gear-item-cb">
+              <input type="checkbox" name="gearItem" value="${item.id}" class="gear-item-cb">
               ${item.image ? `<img class="selector-thumb" src="${item.image}" alt="${escapeHtml(item.name)}" loading="lazy">` : '<div class="selector-thumb-placeholder"></div>'}
               <div class="selector-item-info">
                 <div class="selector-item-name">${escapeHtml(item.name)}</div>
@@ -6936,6 +6966,7 @@
 
     const item = items.find(it => it.id === itemId)
     if (!item || !item.image_path) return
+    if (!appHelpers.shouldRefreshImageUrlOnError(item.image_path)) return
 
     try {
       // Get fresh URL for this image
@@ -6969,7 +7000,6 @@
   document.addEventListener('error', (e) => {
     if (e.target.tagName === 'IMG' && e.target.classList.contains('thumb')) {
       setTimeout(() => {
-        console.log("handleImageError")
         handleImageError(e.target)
       }, 1000);
     }

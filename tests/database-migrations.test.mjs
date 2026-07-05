@@ -201,6 +201,51 @@ test('database migrations add access functions, search RPCs, storage stats, and 
   assert.ok(allSql.includes('public.can_read_gear_item'))
 })
 
+test('visible gear search RPC returns the full card data contract', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607050001_fix_visible_gear_card_contract.sql')
+  assert.ok(migration, 'visible gear card contract fix migration must exist')
+  const sql = compact(migration.sql)
+  assert.ok(sql.includes('drop function if exists public.search_visible_gear(text, int, int)'))
+  assert.ok(
+    sql.indexOf('drop function if exists public.search_visible_gear(text, int, int)') <
+      sql.indexOf('create function public.search_visible_gear(search_query text, result_limit int, result_offset int)'),
+    'search_visible_gear must be dropped before recreating with a new return type'
+  )
+
+  for (const field of [
+    'user_id uuid',
+    'weight integer',
+    'price numeric',
+    'year integer',
+    'rating integer',
+    'comment text',
+    'storage_id uuid',
+    'created_at timestamptz',
+    'updated_at timestamptz',
+    'order_index integer',
+    'published_at timestamptz'
+  ]) {
+    assert.ok(sql.includes(field), `search_visible_gear must return ${field}`)
+  }
+
+  for (const selectedColumn of [
+    'gi.user_id',
+    'gi.weight',
+    'gi.price',
+    'gi.year',
+    'gi.rating',
+    'gi.comment',
+    'gi.storage_id',
+    'gi.created_at',
+    'gi.updated_at',
+    'gi.order_index',
+    'gi.published_at'
+  ]) {
+    assert.ok(sql.includes(selectedColumn), `search_visible_gear must select ${selectedColumn}`)
+  }
+})
+
 test('database migrations normalize gear categories and user sort preferences', () => {
   const migrations = readMigrations()
   const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
