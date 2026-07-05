@@ -198,7 +198,62 @@ test('subscription entitlement tables and view satisfy Supabase public schema se
   }
 
   assert.match(allSql, /create policy subscription_plans_select_all on public\.subscription_plans for select to anon, authenticated/)
-  assert.match(allSql, /create policy user_subscriptions_select_owner on public\.user_subscriptions for select to authenticated using \(auth\.uid\(\) = user_id\)/)
+  assert.match(allSql, /create policy user_subscriptions_select_owner on public\.user_subscriptions for select to authenticated using \(\(select auth\.uid\(\)\) = user_id\)/)
+})
+
+test('database migrations resolve Supabase auth RLS initPlan lint for active policies', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607050004_fix_auth_rls_initplan_policies.sql')
+  assert.ok(migration, 'auth RLS initPlan fix migration must exist')
+
+  const sql = compact(migration.sql)
+  const expectedPolicies = [
+    'users_can_view_own_category_order',
+    'users_can_insert_own_category_order',
+    'users_can_update_own_category_order',
+    'users_can_delete_own_category_order',
+    'users_can_view_own_shared_items',
+    'users_can_insert_own_shared_items',
+    'users_can_update_own_shared_items',
+    'users_can_delete_own_shared_items',
+    'anyone_can_read_non_expired_public_shares',
+    'resource_access_grants_select_related',
+    'resource_access_grants_insert_owner_with_entitlement',
+    'resource_access_grants_update_owner_with_entitlement',
+    'resource_access_grants_delete_owner',
+    'storages_insert_owner_with_entitlement',
+    'storages_update_owner_with_entitlement',
+    'storages_delete_owner',
+    'gear_items_insert_owner_with_entitlement',
+    'gear_items_update_owner_with_entitlement',
+    'gear_items_delete_owner',
+    'checklists_insert_owner_with_entitlement',
+    'checklists_update_owner_with_entitlement',
+    'checklists_delete_owner',
+    'user_category_preferences_select_owner',
+    'user_category_preferences_insert_owner',
+    'user_category_preferences_update_owner',
+    'user_category_preferences_delete_owner',
+    'checklist_activities_insert_owner',
+    'checklist_activities_delete_owner',
+    'user_subscriptions_select_owner'
+  ]
+
+  for (const policy of expectedPolicies) {
+    assert.ok(sql.includes(`drop policy if exists ${policy}`), `${policy} must be dropped before recreate`)
+    assert.ok(sql.includes(`create policy ${policy}`), `${policy} must be recreated`)
+    assert.ok(sql.indexOf(`drop policy if exists ${policy}`) < sql.indexOf(`create policy ${policy}`))
+  }
+
+  assert.equal(sql.includes('using (auth.uid()'), false, 'RLS using clauses must not call auth.uid() directly')
+  assert.equal(sql.includes('with check (auth.uid()'), false, 'RLS check clauses must not call auth.uid() directly')
+  assert.equal(sql.includes(' and auth.uid()'), false, 'RLS boolean expressions must not call auth.uid() directly')
+  assert.equal(sql.includes(' or auth.uid()'), false, 'RLS boolean expressions must not call auth.uid() directly')
+  assert.doesNotMatch(sql, /lower\(auth\.jwt\(\)/, 'RLS policies must use (select auth.jwt()) initPlan form')
+  assert.ok(sql.includes('(select auth.uid())'))
+  assert.ok(sql.includes("(select auth.jwt()) ->> 'email'"))
+  assert.match(sql, /create policy users_can_view_own_shared_items on public\.shared_items for select to authenticated using \(\s*\(select auth\.uid\(\)\) = owner_id\s*or expires_at > now\(\)\s*\)/)
+  assert.match(sql, /create policy anyone_can_read_non_expired_public_shares on public\.shared_items for select to anon using \(expires_at > now\(\)\)/)
 })
 
 test('catalog trigger functions and search extension satisfy Supabase security lint', () => {
@@ -415,6 +470,21 @@ test('database migrations add query-path indexes for Supabase reads and visible 
   ]) {
     assert.ok(allSql.includes(expectedIndex), `${expectedIndex} must exist`)
     assert.match(allSql, new RegExp(`${expectedIndex}.*using gin.*gin_trgm_ops`))
+  }
+})
+
+test('database migrations cover foreign keys flagged by Supabase lint', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607050005_add_fk_covering_indexes.sql')
+  assert.ok(migration, 'foreign-key covering index migration must exist')
+
+  const sql = compact(migration.sql)
+  for (const expectedIndex of [
+    'create index if not exists idx_shared_items_item_id on public.shared_items(item_id)',
+    'create index if not exists idx_shared_items_checklist_id on public.shared_items(checklist_id)',
+    'create index if not exists idx_user_subscriptions_plan_id on public.user_subscriptions(plan_id)'
+  ]) {
+    assert.ok(sql.includes(expectedIndex), `${expectedIndex} must exist`)
   }
 })
 
