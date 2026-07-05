@@ -499,28 +499,68 @@ const SupabaseService = {
 
   // ==================== CATEGORY ORDER ====================
 
-  async getCategoryOrder() {
-    if (!this.currentUser) throw new Error('Not authenticated')
-
+  async getCategories() {
     const { data, error } = await supabaseClient
-      .from('category_order')
-      .select('categories, sort_modes')
-      .eq('user_id', this.currentUser.id)
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .from('categories')
+      .select('id, name, display_order')
+      .eq('is_active', true)
+      .order('display_order', { ascending: true })
 
     if (error) throw error
 
-    if (!data) return null
+    return data || []
+  },
+
+  async getOutdoorBrands() {
+    const { data, error } = await supabaseClient
+      .from('outdoor_brands')
+      .select('id, name, display_name')
+      .eq('is_active', true)
+      .order('display_name', { ascending: true })
+
+    if (error) throw error
+
+    return (data || [])
+      .map(brand => brand.display_name || brand.name)
+      .filter(Boolean)
+  },
+
+  async getCategoryOrder() {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const categories = await this.getCategories()
+    const { data, error } = await supabaseClient
+      .from('user_category_preferences')
+      .select('order_index, sort_mode, category:categories(id, name)')
+      .eq('user_id', this.currentUser.id)
+      .order('order_index', { ascending: true })
+
+    if (error) {
+      throw error
+    }
+
+    const orderedPreferenceNames = []
+    const sortModes = {}
+
+    ;(data || []).forEach(pref => {
+      const categoryName = pref.category?.name
+      if (!categoryName || orderedPreferenceNames.includes(categoryName)) return
+
+      orderedPreferenceNames.push(categoryName)
+      sortModes[categoryName] = pref.sort_mode || 'name'
+    })
+
+    const missingCategories = categories
+      .map(category => category.name)
+      .filter(name => !orderedPreferenceNames.includes(name))
 
     return {
-      categories: data.categories || [],
-      sort_modes: data.sort_modes || {}
+      categories: orderedPreferenceNames.concat(missingCategories),
+      sort_modes: sortModes
     }
   },
 
-  async saveCategoryOrder(categoryData, sortModes = {}) {
+  async _saveLegacyCategoryOrder(categoryData, sortModes = {}) {
     if (!this.currentUser) throw new Error('Not authenticated')
 
     // First, delete existing category order for this user
@@ -543,6 +583,54 @@ const SupabaseService = {
 
     if (error) throw error
     return data
+  },
+
+  async saveCategoryOrder(categoryData, sortModes = {}) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const categories = await this.getCategories()
+    const categoryIdsByName = new Map(categories.map(category => [category.name, category.id]))
+    const missingCategoryNames = categoryData.filter(categoryName => !categoryIdsByName.has(categoryName))
+
+    if (missingCategoryNames.length > 0) {
+      throw new Error(`Unknown categories: ${missingCategoryNames.join(', ')}`)
+    }
+
+    const rows = categoryData
+      .map((categoryName, index) => ({
+        user_id: this.currentUser.id,
+        category_id: categoryIdsByName.get(categoryName),
+        order_index: index,
+        sort_mode: sortModes[categoryName] || 'name',
+        updated_at: new Date().toISOString()
+      }))
+      .filter(row => row.category_id)
+
+    const { error: deleteError } = await supabaseClient
+      .from('user_category_preferences')
+      .delete()
+      .eq('user_id', this.currentUser.id)
+
+    if (deleteError) {
+      throw deleteError
+    }
+
+    if (rows.length > 0) {
+      const { error: insertError } = await supabaseClient
+        .from('user_category_preferences')
+        .insert(rows)
+
+      if (insertError) {
+        throw insertError
+      }
+    }
+
+    await this._saveLegacyCategoryOrder(categoryData, sortModes)
+
+    return {
+      categories: categoryData,
+      sort_modes: sortModes
+    }
   },
 
   async saveItemsOrder(itemsOrder) {
@@ -1164,54 +1252,6 @@ const SupabaseService = {
     } catch (error) {
       console.error('Error deleting all user data:', error)
       throw error
-    }
-  },
-
-  // Remove legacy 'kitchen' category everywhere: LocalStorage + Supabase DB
-  async removeKitchenCategoryEverywhere() {
-    if (!this.currentUser) throw new Error('Not authenticated')
-
-    try {
-      // 1) Update category_order record in DB (if present)
-      const existing = await this.getCategoryOrder()
-      if (existing && Array.isArray(existing.categories)) {
-        const filtered = existing.categories.filter(c => typeof c === 'string' && c.trim().toLowerCase() !== 'kitchen')
-        if (filtered.length !== existing.categories.length) {
-          await this.saveCategoryOrder(filtered, existing.sort_modes || {})
-        }
-      }
-
-      // 2) Update gear_items rows: set category 'kitchen' -> 'Cooking'
-      const { data: updateData, error: updateError } = await supabaseClient
-        .from('gear_items')
-        .update({ category: 'Cooking' })
-        .eq('user_id', this.currentUser.id)
-        .eq('category', 'kitchen')
-
-      if (updateError) {
-        console.error('Error updating gear_items categories:', updateError)
-      }
-
-      // 3) Ensure localStorage (client-side) is cleaned as well
-      try {
-        const raw = localStorage.getItem('allmygear.categoryOrder')
-        if (raw) {
-          const arr = JSON.parse(raw)
-          if (Array.isArray(arr)) {
-            const filteredLocal = arr.filter(c => typeof c === 'string' && c.trim().toLowerCase() !== 'kitchen')
-            if (filteredLocal.length !== arr.length) {
-              localStorage.setItem('allmygear.categoryOrder', JSON.stringify(filteredLocal))
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Could not clean localStorage categoryOrder:', e)
-      }
-
-      return true
-    } catch (err) {
-      console.error('removeKitchenCategoryEverywhere error:', err)
-      throw err
     }
   },
 

@@ -15,6 +15,7 @@ Important columns:
 | `id` | `uuid` | Item id. |
 | `user_id` | `uuid` | Owner, references `auth.users(id)`. |
 | `category` | `text` | Gear category. |
+| `category_id` | `uuid` | Optional normalized category reference to `categories(id)`. |
 | `name` | `text` | Required item name. |
 | `brand` | `text` | Optional brand. |
 | `model` | `text` | Optional model. |
@@ -71,9 +72,51 @@ Client access:
 
 Security note: RLS allows owners, public rows and explicit shared grants. Public checklist snapshots must not expose private item fields.
 
+### `categories`
+
+Stores the global gear category catalog. The frontend loads active rows from this table for the category selector and display order fallback.
+
+Important columns:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `id` | `uuid` | Category id. |
+| `name` | `text` | Display name, unique. |
+| `slug` | `text` | Stable URL/code-friendly identifier, unique. |
+| `display_order` | `integer` | Default category order. |
+| `is_active` | `boolean` | Whether the category is selectable/displayed. |
+
+Client access:
+
+- `getCategories`
+- `getCategoryOrder`
+
+Security note: active categories are selectable by anonymous and authenticated users.
+
+### `user_category_preferences`
+
+Stores per-user category order and sort modes using normalized category references.
+
+Important columns:
+
+| Column | Type | Meaning |
+| --- | --- | --- |
+| `id` | `uuid` | Preference row id. |
+| `user_id` | `uuid` | Owner, references `auth.users(id)`. |
+| `category_id` | `uuid` | Category, references `categories(id)`. |
+| `order_index` | `integer` | Per-user category order. |
+| `sort_mode` | `text` | Per-category sort setting: `name`, `weight`, `price`, `year` or `rating`. |
+
+Client access:
+
+- `getCategoryOrder`
+- `saveCategoryOrder`
+
+Security note: RLS allows authenticated users to manage only their own category preferences.
+
 ### `category_order`
 
-Stores per-user category order and sort modes.
+Legacy compatibility table for per-user category order and sort modes. New writes are mirrored here after saving `user_category_preferences`, but frontend category reads use `categories` and `user_category_preferences`.
 
 Important columns:
 
@@ -86,8 +129,7 @@ Important columns:
 
 Client access:
 
-- `getCategoryOrder`
-- `saveCategoryOrder`
+- compatibility mirror in `saveCategoryOrder`
 
 Security note: RLS and owner-only policies are defined in the migrations.
 

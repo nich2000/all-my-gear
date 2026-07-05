@@ -1,38 +1,12 @@
 (function(root) {
   function normalizeCategoryOrder(categories) {
-    const normalized = Array.isArray(categories)
-      ? categories.filter(c => typeof c === 'string' && c.trim().toLowerCase() !== 'kitchen')
+    return Array.isArray(categories)
+      ? categories.filter(c => typeof c === 'string' && c.trim().length > 0)
       : []
-
-    if (!normalized.includes('Photo/Video Gear')) {
-      const rideGearIndex = normalized.indexOf('Ride Gear')
-      if (rideGearIndex > -1) {
-        normalized.splice(rideGearIndex, 0, 'Photo/Video Gear')
-      } else {
-        const consumablesIndex = normalized.indexOf('Consumables')
-        if (consumablesIndex > -1) {
-          normalized.splice(consumablesIndex, 0, 'Photo/Video Gear')
-        } else {
-          normalized.push('Photo/Video Gear')
-        }
-      }
-    }
-
-    if (!normalized.includes('Ride Gear')) {
-      const consumablesIndex = normalized.indexOf('Consumables')
-      if (consumablesIndex > -1) {
-        normalized.splice(consumablesIndex, 0, 'Ride Gear')
-      } else {
-        normalized.push('Ride Gear')
-      }
-    }
-
-    return normalized
   }
 
   function normalizeGearCategory(category) {
-    const rawCategory = (category || '').toString().trim()
-    return rawCategory && rawCategory.toLowerCase() === 'kitchen' ? 'Cooking' : rawCategory
+    return (category || '').toString().trim()
   }
 
   function getRenderableGearCategories(categories, groupedItems, showEmpty) {

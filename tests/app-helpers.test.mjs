@@ -15,21 +15,21 @@ const {
   shouldCollapseChecklist
 } = require('../www/js/app-helpers.js')
 
-test('normalizes legacy and missing gear categories in display order', () => {
+test('normalizes legacy category order without adding frontend categories', () => {
   assert.deepEqual(
-    normalizeCategoryOrder(['Shelter', 'Kitchen', 'Consumables']),
-    ['Shelter', 'Photo/Video Gear', 'Ride Gear', 'Consumables']
+    normalizeCategoryOrder(['Shelter', '', '  ', 'Consumables']),
+    ['Shelter', 'Consumables']
   )
 
   assert.deepEqual(
     normalizeCategoryOrder(['Shelter', 'Ride Gear']),
-    ['Shelter', 'Photo/Video Gear', 'Ride Gear']
+    ['Shelter', 'Ride Gear']
   )
 })
 
-test('normalizes individual legacy gear category names', () => {
-  assert.equal(normalizeGearCategory('Kitchen'), 'Cooking')
-  assert.equal(normalizeGearCategory(' kitchen '), 'Cooking')
+test('normalizes individual gear category whitespace only', () => {
+  assert.equal(normalizeGearCategory('Kitchen'), 'Kitchen')
+  assert.equal(normalizeGearCategory(' kitchen '), 'kitchen')
   assert.equal(normalizeGearCategory('Lighting'), 'Lighting')
   assert.equal(normalizeGearCategory(null), '')
 })

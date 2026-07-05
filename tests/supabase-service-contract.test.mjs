@@ -3,10 +3,67 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const serviceSource = readFileSync(new URL('../www/js/supabase-service.js', import.meta.url), 'utf8')
+const appHelpersSource = readFileSync(new URL('../www/js/app-helpers.js', import.meta.url), 'utf8')
+const appSource = readFileSync(new URL('../www/js/app.js', import.meta.url), 'utf8')
 
 test('supabase service exposes entitlement API across browser scripts', () => {
   assert.match(serviceSource, /async getCurrentUserEntitlements\(\)/)
   assert.match(serviceSource, /window\.SupabaseService\s*=\s*SupabaseService/)
+})
+
+test('supabase service loads category catalog and user category preferences from database', () => {
+  assert.match(serviceSource, /async getCategories\(\)/)
+  assert.match(serviceSource, /\.from\('categories'\)/)
+  assert.match(serviceSource, /\.from\('user_category_preferences'\)/)
+  assert.match(serviceSource, /category:categories\(id,\s*name\)/)
+})
+
+test('frontend does not keep a hardcoded category catalog fallback', () => {
+  assert.doesNotMatch(appHelpersSource, /DEFAULT_GEAR_CATEGORIES/)
+  assert.doesNotMatch(serviceSource, /DEFAULT_GEAR_CATEGORIES/)
+  assert.doesNotMatch(appSource, /DEFAULT_GEAR_CATEGORIES/)
+  assert.doesNotMatch(appSource, /const\s+defaultCategories\s*=\s*\[/)
+})
+
+test('supabase service loads outdoor brand catalog from database', () => {
+  assert.match(serviceSource, /async getOutdoorBrands\(\)/)
+  assert.match(serviceSource, /\.from\('outdoor_brands'\)/)
+  assert.match(serviceSource, /\.select\('id, name, display_name'\)/)
+  assert.match(serviceSource, /\.eq\('is_active', true\)/)
+  assert.match(serviceSource, /\.order\('display_name', \{ ascending: true \}\)/)
+})
+
+test('frontend brand autocomplete is rendered from loaded outdoor brands', () => {
+  assert.match(appSource, /let outdoorBrands = \[\]/)
+  assert.match(appSource, /outdoorBrands = await SupabaseService\.getOutdoorBrands\(\)/)
+  assert.match(appSource, /function renderBrandOptions\(brandList\)/)
+  assert.match(appSource, /renderBrandOptions\(brandList\)/)
+  assert.doesNotMatch(appSource, /const\s+outdoorBrands\s*=\s*\[\.\.\.new Set\(\[/)
+  assert.doesNotMatch(appSource, /Outdoor gear brands database - comprehensive list/)
+})
+
+test('frontend category controls are rendered from loaded category order', () => {
+  assert.match(appSource, /function renderCategoryOptions\(selectedCategory\)/)
+  assert.match(appSource, /const orderedCategories = Array\.isArray\(categoryOrder\) \? \[\.\.\.categoryOrder\] : \[\]/)
+  assert.match(appSource, /\$\{renderCategoryOptions\(it\.category\)\}/)
+  assert.match(appSource, /const allCategories = Array\.isArray\(categoryOrder\) \? categoryOrder : \[\]/)
+  assert.doesNotMatch(appSource, /<option value=["']Shelter["']/)
+  assert.doesNotMatch(appSource, /<option value=\\["']Shelter\\["']/)
+})
+
+test('saving category preferences fails before deleting rows when a category is missing from the database catalog', () => {
+  assert.match(serviceSource, /const missingCategoryNames = categoryData\.filter/)
+  assert.match(serviceSource, /throw new Error\(`Unknown categories: \$\{missingCategoryNames\.join\(', '\)\}`\)/)
+
+  const missingCategoryCheckIndex = serviceSource.indexOf('const missingCategoryNames = categoryData.filter')
+  const deletePreferencesIndex = serviceSource.indexOf(".from('user_category_preferences')\n      .delete()")
+
+  assert.ok(missingCategoryCheckIndex > -1, 'saveCategoryOrder must compute missing category names')
+  assert.ok(deletePreferencesIndex > -1, 'saveCategoryOrder must delete existing preference rows after validation')
+  assert.ok(
+    missingCategoryCheckIndex < deletePreferencesIndex,
+    'unknown categories must be rejected before existing preference rows are deleted'
+  )
 })
 
 test('missing entitlements schema uses quiet free-plan fallback', () => {

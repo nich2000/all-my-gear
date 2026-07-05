@@ -175,6 +175,69 @@ test('database migrations add access functions, search RPCs, storage stats, and 
   assert.ok(allSql.includes('public.can_read_gear_item'))
 })
 
+test('database migrations normalize gear categories and user sort preferences', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.ok(allSql.includes('create table if not exists public.categories'))
+  assert.ok(allSql.includes('create table if not exists public.user_category_preferences'))
+  assert.ok(allSql.includes('alter table if exists public.gear_items add column if not exists category_id uuid'))
+  assert.match(allSql, /foreign key \(category_id\) references public\.categories\(id\)/)
+  assert.match(allSql, /foreign key \(category_id\) references public\.categories\(id\) on delete cascade/)
+  assert.match(allSql, /constraint user_category_preferences_user_category_key unique \(user_id, category_id\)/)
+
+  for (const category of [
+    'Shelter',
+    'Sleep System',
+    'Fishing & Hunting',
+    'Climbing & Rope',
+    'Winter & Snow',
+    'Photo/Video Gear',
+    'Ride Gear',
+    'Consumables'
+  ]) {
+    assert.ok(allSql.includes(`'${category.toLowerCase()}'`), `${category} must be seeded in categories`)
+  }
+
+  assert.ok(allSql.includes('insert into public.user_category_preferences'))
+  assert.ok(allSql.includes('from public.category_order co'))
+  assert.ok(allSql.includes('jsonb_array_elements_text(co.categories) with ordinality'))
+  assert.ok(allSql.includes('co.sort_modes ->> category_name'))
+  assert.ok(allSql.includes('create or replace function public.sync_gear_item_category_id()'))
+  assert.ok(allSql.includes('create trigger sync_gear_item_category_id_trigger'))
+  assert.ok(allSql.includes('before insert or update of category, category_id on public.gear_items'))
+  assert.ok(allSql.includes("when lower(trim(new.category)) = 'kitchen' then 'cooking'"))
+  assert.ok(allSql.includes("when new.category = 'bag / package' then 'packs & bags'"))
+  assert.match(allSql, /create policy user_category_preferences_select_owner/)
+  assert.match(allSql, /create policy categories_select_all/)
+})
+
+test('database migrations normalize outdoor brands and link gear items to the brand catalog', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.ok(allSql.includes('create table if not exists public.outdoor_brands'))
+  assert.ok(allSql.includes('alter table if exists public.gear_items add column if not exists brand_id uuid'))
+  assert.match(allSql, /foreign key \(brand_id\) references public\.outdoor_brands\(id\)/)
+  assert.ok(allSql.includes('create index if not exists idx_outdoor_brands_display_name'))
+  assert.ok(allSql.includes('create index if not exists idx_gear_items_brand_id'))
+  assert.ok(allSql.includes('create or replace function public.sync_gear_item_brand_id()'))
+  assert.ok(allSql.includes('create trigger sync_gear_item_brand_id_trigger'))
+  assert.ok(allSql.includes('before insert or update of brand, brand_id on public.gear_items'))
+  assert.match(allSql, /create policy outdoor_brands_select_all/)
+
+  for (const brand of [
+    "Arc'teryx",
+    'MSR',
+    'Patagonia',
+    'Ortlieb',
+    'Сплав',
+    'Наша Марка'
+  ]) {
+    assert.ok(allSql.includes(`'${brand.toLowerCase().replaceAll("'", "''")}'`), `${brand} must be seeded in outdoor_brands`)
+  }
+})
+
 test('database migrations contain SQL access scenario checks', () => {
   const migrations = readMigrations()
   assert.equal(existsSync(visibilityChecksFile), true, 'visibility access SQL checks must exist')

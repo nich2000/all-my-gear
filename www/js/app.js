@@ -136,75 +136,6 @@
 
   initializeStorageRatingStars()
 
-  // Immediately clean any legacy 'kitchen' entry from localStorage (persistent client-side state)
-  let localStorageUpdated = false
-
-  try {
-    const rawCat = localStorage.getItem('allmygear.categoryOrder')
-    if (rawCat) {
-      const arr = JSON.parse(rawCat)
-      if (Array.isArray(arr)) {
-        let filtered = appHelpers.normalizeCategoryOrder(arr)
-
-        if (filtered.length !== arr.length || JSON.stringify(filtered) !== JSON.stringify(arr)) {
-          localStorage.setItem('allmygear.categoryOrder', JSON.stringify(filtered))
-          localStorageUpdated = true
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('Could not clean localStorage categoryOrder on startup:', e)
-  }
-
-  // If user already signed in, ask Supabase to remove the legacy category from DB and add new categories
-  (async () => {
-    try {
-      if (window.SupabaseService && SupabaseService.currentUser) {
-        await SupabaseService.removeKitchenCategoryEverywhere()
-
-        // Add new categories to category order in Supabase if not present
-        const categoryOrderData = await SupabaseService.getCategoryOrder()
-        if (categoryOrderData && categoryOrderData.categories && Array.isArray(categoryOrderData.categories)) {
-          let cats = categoryOrderData.categories
-          let updated = false
-
-          // Add "Photo/Video Gear" before "Ride Gear"
-          if (!cats.includes('Photo/Video Gear')) {
-            const rideGearIndex = cats.indexOf('Ride Gear')
-            if (rideGearIndex > -1) {
-              cats.splice(rideGearIndex, 0, 'Photo/Video Gear')
-            } else {
-              const consumablesIndex = cats.indexOf('Consumables')
-              if (consumablesIndex > -1) {
-                cats.splice(consumablesIndex, 0, 'Photo/Video Gear')
-              } else {
-                cats.push('Photo/Video Gear')
-              }
-            }
-            updated = true
-          }
-
-          // Add "Ride Gear" before "Consumables"
-          if (!cats.includes('Ride Gear')) {
-            const consumablesIndex = cats.indexOf('Consumables')
-            if (consumablesIndex > -1) {
-              cats.splice(consumablesIndex, 0, 'Ride Gear')
-            } else {
-              cats.push('Ride Gear')
-            }
-            updated = true
-          }
-
-          if (updated) {
-            await SupabaseService.saveCategoryOrder(cats)
-          }
-        }
-      }
-    } catch (err) {
-      // Silently ignore legacy cleanup errors
-    }
-  })()
-
   // Function to smoothly animate background color transition
   function animateBackgroundTransition(targetColors, isFromGear = false) {
     // Define starting colors based on current mode
@@ -475,232 +406,26 @@
     `).join('')
   }
 
-  // Outdoor gear brands database - comprehensive list
-  const outdoorBrands = [...new Set([
-    // Premium Outdoor & Alpine
-    'Arc\'teryx', 'Patagonia', 'The North Face', 'Mammut', 'Marmot', 'Mountain Hardwear',
-    'Outdoor Research', 'Rab', 'Montane', 'Montbell', 'Haglöfs', 'Norrøna', 'Bergans',
-    'Fjallraven', 'Helly Hansen', 'Peak Performance', 'Tierra', 'Klättermusen', 'Lundhags',
+  let outdoorBrands = []
 
-    // Technical Climbing & Mountaineering
-    'Black Diamond', 'Petzl', 'DMM', 'Wild Country', 'Grivel', 'Camp', 'Edelrid',
-    'Beal', 'Sterling', 'Metolius', 'Trango', 'Simond', 'Singing Rock',
-
-    // Footwear
-    'Salomon', 'La Sportiva', 'Scarpa', 'Merrell', 'Keen', 'Lowa', 'Asolo', 'Zamberlan',
-    'Vasque', 'Oboz', 'Danner', 'Altra', 'Hoka One One', 'Topo Athletic', 'Inov-8',
-    'Adidas Terrex', 'Nike ACG', 'Meindl', 'Hanwag', 'Garmont', 'Tecnica', 'Boreal',
-
-    // Backpacks & Bags
-    'Osprey', 'Deuter', 'Gregory', 'Mystery Ranch', 'Hyperlite Mountain Gear', 'Zpacks',
-    'Granite Gear', 'ULA', 'Six Moon Designs', 'Gossamer Gear', 'LiteAF', 'Mountain Laurel Designs',
-    'Stone Glacier', 'Kifaru', 'Hill People Gear', 'Eberlestock', 'Kelty',
-    'Karrimor', 'Tatonka', 'Bach', 'Exped', 'Lowe Alpine', 'F-Stop', 'Shimoda', 'Mindshift Gear',
-
-    // Tents & Shelters
-    'Hilleberg', 'MSR', 'Big Agnes', 'Nemo', 'Terra Nova', 'Tarptent', 'Durston',
-    'Sea to Summit', 'Sierra Designs', 'Alps Mountaineering',
-    'Eureka', 'Nordisk', 'Vaude', 'Robens', 'Wechsel', 'Vango', 'Snugpak',
-
-    // Sleeping Bags & Pads
-    'Western Mountaineering', 'Feathered Friends', 'Enlightened Equipment', 'Therm-a-Rest',
-    'Klymit', 'REI', 'Cumulus', 'Valandré', 'PHD', 'Timmermade', 'Nunatak', 'Katabatic',
-
-    // Camp Furniture & Accessories
-    'Helinox', 'Crazy Creek', 'ENO', 'Grand Trunk', 'Trekology', 'Moon Lence', 'Cascade Mountain Tech',
-
-    // Cooking & Stoves
-    'JetBoil', 'Primus', 'Optimus', 'Trangia', 'Snow Peak', 'GSI Outdoors', 'Stanley',
-    'Toaks', 'Evernew', 'Olicamp', 'Vargo', 'Soto', 'Kovea', 'Fire-Maple', 'BRS', 'Esbit',
-
-    // Hydration & Water Treatment
-    'CamelBak', 'Platypus', 'Sawyer', 'Katadyn', 'LifeStraw', 'Grayl', 'HydraPak',
-    'Nalgene', 'Klean Kanteen', 'Hydro Flask', 'Yeti', 'RTIC', 'Orca', 'SIGG',
-    'Geigerrig', 'Source', 'SteriPen', 'Aquamira', 'Potable Aqua',
-
-    // Electronics & Navigation
-    'Garmin', 'Suunto', 'Spot', 'InReach', 'BioLite', 'Goal Zero', 'Anker', 'Nitecore',
-    'Fenix', 'Olight', 'Ledlenser', 'Princeton Tec', 'Streamlight',
-    'Brunton', 'Silva', 'Bushnell', 'Magellan', 'Coros', 'Wahoo', 'Polar', 'Apple', 'Samsung',
-
-    // Clothing - Base & Mid Layers
-    'Icebreaker', 'Smartwool', 'Ibex', 'Minus33', 'Kari Traa', 'Devold', 'Ulvang', 'Aclima', 'Houdini',
-
-    // Socks
-    'Darn Tough', 'Farm to Feet', 'Point6', 'Fox River', 'Wigwam', 'Injinji',
-    'Defeet', 'Balega', 'Thorlo', 'Bridgedale', 'Lorpen', 'Fits',
-
-    // Hunting & Tactical
-    'Sitka', 'Kuiu', 'First Lite', 'Kryptek', 'HECS',
-    'Badlands', 'Under Armour', 'Cabela\'s', 'Bass Pro Shops', 'Browning', 'Mossy Oak', 'Realtree',
-
-    // Budget & Mass Market
-    'Decathlon', 'Quechua', 'Forclaz', 'Naturehike', 'Coleman', 'Teton Sports', 'ALPS Mountaineering',
-    'High Sierra', 'REI Co-op', 'Amazon Basics', 'Ozark Trail', 'Equip', 'Chinook',
-
-    // Chinese Outdoor Brands
-    '3F UL Gear', 'Black Deer', 'Fire-Maple', 'TiGoat', 'CNOC Outdoors', 'Flame\'s Creed',
-    'MIER', 'Pomoly', 'OneTigris', 'REDCAMP', 'Lixada', 'Tomshoo', 'Odoland', 'Widesea',
-    'Hewolf', 'Mobi Garden', 'Kailas', 'Toread', 'ALPINT MOUNTAIN', 'AEGISMAX', 'Paria Outdoor',
-    'Lanshan', 'River Country Products', 'ZPacks China', 'Ultralight Outdoor Gear', 'Wind Hard',
-    'Shuangfeng', 'Yougle', 'Trackman', 'Camppal', 'Skypeople', 'Creeper', 'Trekkinn',
-    'Hillman', 'FACECOZY', 'Boundless Voyage', 'Bulin', 'AOTU', 'Etekcity', 'Coghlan\'s',
-
-    // Specialty & Niche
-    'Eagle Creek', 'Peak Design', 'Lowepro', 'Tom Bihn', 'Maxpedition', '5.11 Tactical', 'Condor',
-    'Triple Aught Design', 'GORUCK', 'Chrome', 'Timbuk2', 'Ortlieb', 'Revelate', 'Apidura',
-
-    // International & Regional
-    'Fjällräven', 'Didriksons', 'Halti', 'Reima', 'Icepeak', 'Rukka', 'Jack Wolfskin', 'Schöffel',
-    'Salewa', 'Dynafit', 'Ortovox', 'Prana', 'Kühl', 'Royal Robbins',
-
-    // Ultralight & Cottage Brands
-    'Borah Gear', 'Yama Mountain Gear', 'Simply Light Designs', 'Pa\'lante', 'Superior Wilderness Designs',
-
-    // Paddle Sports
-    'NRS', 'Astral', 'Kokatat', 'Aqua-Bound', 'Werner Paddles', 'Bending Branches', 'Perception',
-    'Dagger', 'Wilderness Systems', 'Old Town', 'Pelican', 'Oru Kayak', 'Advanced Elements',
-
-    // Winter Sports
-    'Pieps', 'BCA', 'Arva', 'G3', 'Pomoca',
-    'Contour', 'Colltex', 'Tubbs', 'Atlas', 'TSL', 'Yaktrax', 'Kahtoola', 'Hillsound',
-
-    // Trail Running
-    'Brooks', 'Saucony', 'New Balance', 'Nike', 'Adidas', 'On Running', 'Scott',
-
-    // Knives & Multi-tools
-    'Benchmade', 'Spyderco', 'Kershaw', 'CRKT', 'Buck', 'Gerber', 'SOG', 'Victorinox',
-    'Leatherman', 'Cold Steel', 'Zero Tolerance', 'Mora', 'Morakniv', 'Helle', 'Opinel',
-    'Ka-Bar', 'Esee', 'Tops', 'Fallkniven', 'Böker', 'Case', 'Ontario', 'Schrade',
-    'Benchmade', 'Emerson', 'Microtech', 'Protech', 'Hinderer', 'Chris Reeve', 'Strider',
-    'Extrema Ratio', 'Fox Knives', 'LionSteel', 'Real Steel', 'Ganzo', 'Sanrenmu',
-    'Нокс', 'Кизляр', 'АиР', 'Лесной Ворон', 'Златоуст', 'Ножи Северная корона',
-
-    // Ski & Snowboard Equipment
-    'Atomic', 'Rossignol', 'Salomon', 'Fischer', 'Head', 'K2', 'Volkl', 'Blizzard',
-    'Nordica', 'Tecnica', 'Scarpa', 'Burton', 'Ride', 'Jones', 'Capita', 'Never Summer',
-    'Lib Tech', 'GNU', 'Arbor', 'Rome', 'Union', 'Bent Metal', 'Drake', 'Flux',
-    'Smith', 'Oakley', 'Dragon', 'Anon', 'Giro', 'POC', 'Sweet Protection', 'Scott',
-    'Marker', 'Tyrolia', 'Look', 'Fritschi', 'Plum', 'ATK', 'Trab', 'Movement',
-
-    // Fishing Equipment
-    'Shimano', 'Daiwa', 'Penn', 'Abu Garcia', 'Okuma', 'Rapala', 'Berkley', 'Pure Fishing',
-    'Ugly Stik', 'St. Croix', 'G.Loomis', 'Fenwick', 'Lamiglas', 'Megabass', 'Lucky Craft',
-    'Yo-Zuri', 'Mepps', 'Blue Fox', 'Eppinger', 'Strike King', 'Gary Yamamoto', 'Zoom',
-    'Berkley PowerBait', 'Gulp', 'Z-Man', 'Savage Gear', 'Westin', 'Deps', 'OSP',
-    'Aqua', 'Norstream', 'Волжанка', 'Mikado', 'Salmo', 'Balzer', 'DAM', 'Favorite',
-    'Trabucco', 'Colmic', 'Maver', 'Matrix', 'Preston', 'Korda', 'Fox International',
-    'Nash', 'Trakker', 'JRC', 'Sonik', 'Cygnet', 'Greys', 'Scierra', 'Loop', 'Rio',
-    'Scientific Anglers', 'Cortland', 'Airflo', 'Sage', 'Redington', 'Echo', 'Temple Fork',
-    'Orvis', 'Hardy', 'Snowbee', 'Guideline', 'Vision', 'Hatch', 'Nautilus', 'Ross',
-    'Tibor', 'Abel', 'Galvan', 'Lamson', 'Bauer', 'Danielsson', 'Einarsson', 'Shilton',
-    'Simms', 'Patagonia', 'Redington', 'Wrangler', 'Filson', 'Sitka', 'Grundens', 'Helly Hansen',
-    'Frogg Toggs', 'Compass 360', 'Stormr', 'SunGloves', 'Buff', 'Costa Del Mar', 'Oakley',
-    'Maui Jim', 'Smith Optics', 'Kaenon', 'Flying Fisherman', 'Cocoons', 'Solar Bat',
-    'Wiley X', 'Hobie', 'Calcutta', 'Spotters', 'Bajio', 'REVO', 'Ray-Ban', 'Julbo',
-    'Fortis', 'Korda', 'Aqua Products', 'Fox Rage', 'Spro', 'Gamakatsu', 'Owner', 'Mustad',
-    'VMC', 'Trokar', 'Circle Hook Co', 'Eagle Claw', 'Lazer Sharp', 'Daiichi', 'Tiemco',
-    'Partridge', 'Kamasan', 'Barbless', 'Umpqua', 'Montana Fly Company', 'Estes Park',
-    'Regal', 'Griffin', 'Stonfo', 'Dr. Slick', 'Loon Outdoors', 'Solarez', 'Gehrke\'s',
-    'Frogs Fanny', 'Zap-A-Gap', 'Bobbie\'s Boat', 'Fishpond', 'William Joseph', 'Vedavoo',
-    'Abel', 'Bozeman', 'Mayfly', 'Umpqua', 'Scientific Anglers', 'Whiting Farms',
-    'Ewing', 'Hareline', 'Nature\'s Spirit', 'Fly Scene', 'Wapsi', 'Veniard', 'Semperfli',
-    'Antron', 'Krystal Flash', 'Flashabou', 'Slinky Fiber', 'EP Fibers', 'Fish-Skull',
-    'Tungsten Beads', 'Spirit River', 'Rainy\'s', 'Fulling Mill', 'Ahrex', 'Hends',
-    'Jig Force', 'BKK', 'Decoy', 'Hayabusa', 'Katsuichi', 'Fudo', 'Nogales', 'Varivas',
-    'Sunline', 'Toray', 'Seaguar', 'Fluorocarbon', 'PowerPro', 'Fireline', 'SpiderWire',
-    'Sufix', 'Stren', 'Trilene', 'Maxima', 'Amnesia', 'Rio Products', 'Airflo',
-    'Wulff', 'Cortland', 'SA', 'Loop', 'Guideline', 'Vision', 'Snowbee', 'Shakespeare',
-    'Leeda', 'Drennan', 'Sensas', 'Browning', 'Feeder Concept', 'Method Feeder', 'Guru',
-    'Middy', 'Daiwa', 'Preston Innovations', 'MAP', 'Avid Carp', 'Thinking Anglers',
-    'Sticky Baits', 'Mainline Baits', 'Dynamite Baits', 'CC Moore', 'Nutrabaits',
-    'Rod Hutchinson', 'Solar Tackle', 'Chub', 'Taska', 'Gardner Tackle', 'Korum',
-    'ESP', 'Rig Marole', 'PB Products', 'Thinking Anglers', 'Enterprise Tackle',
-
-    // Hunting Equipment
-    'Winchester', 'Remington', 'Beretta', 'CZ', 'Tikka', 'Sako', 'Weatherby', 'Savage Arms',
-    'Benelli', 'Franchi', 'Stoeger', 'Mossberg', 'Marlin', 'Henry', 'Ruger', 'Smith & Wesson',
-    'Glock', 'Sig Sauer', 'Heckler & Koch', 'FN Herstal', 'Steyr', 'Blaser', 'Merkel',
-    'Krieghoff', 'Perazzi', 'Caesar Guerini', 'Beretta', 'Benelli', 'Franchi',
-    'Leupold', 'Vortex', 'Zeiss', 'Swarovski', 'Schmidt & Bender', 'Nightforce',
-    'Aimpoint', 'EOTech', 'Holosun', 'Primary Arms', 'Trijicon', 'Burris', 'Nikon',
-    'Steiner', 'Meopta', 'Maven', 'Tract', 'Razor', 'Vixen', 'Minox', 'Kahles',
-    'March', 'Tangent Theta', 'Premier', 'US Optics', 'IOR', 'Falcon', 'Hawke',
-    'Crimson Trace', 'Streamlight', 'SureFire', 'Inforce', 'Olight', 'Fenix',
-    'Магнум', 'Тигр', 'Сайга', 'Вепрь', 'Молот', 'Ижмаш', 'Байкал', 'ТОЗ',
-    'ORSIS', 'Lobaev Arms', 'DVL', 'Chronos', 'Promag', 'Partisan',
-
-    // Motorcycle Equipment
-    'Alpinestars', 'Dainese', 'Rev\'It', 'Klim', 'Rukka', 'Held', 'Spidi', 'Richa',
-    'Furygan', 'IXS', 'Tucano Urbano', 'Macna', 'Segura', 'Bering', 'Ixon', 'RST',
-    'Frank Thomas', 'Oxford', 'Halvarssons', 'Lindstrands', 'Gerbing', 'Keis',
-    'Shoei', 'Arai', 'AGV', 'HJC', 'Shark', 'Scorpion', 'Bell', 'LS2', 'MT Helmets',
-    'Caberg', 'Nolan', 'X-Lite', 'Grex', 'Premier', 'Nexx', 'Airoh', 'Just1',
-    'Sidi', 'TCX', 'Forma', 'Gaerne', 'Alpinestars', 'Fox Racing', 'O\'Neal',
-    'Thor', 'Fly Racing', 'Answer Racing', 'MSR', 'Shift', 'Troy Lee Designs',
-    'Leatt', 'Acerbis', 'Polisport', 'UFO', 'Racetech', 'Cycra', 'Enduro Engineering',
-    'Kriega', 'SW-Motech', 'Givi', 'Shad', 'Kappa', 'Hepco & Becker', 'Touratech',
-    'Ortlieb', 'Wolfman', 'Giant Loop', 'Mosko Moto', 'Rok Straps', 'Oxford',
-
-    // Electronics & Tech
-    'Sony', 'Panasonic', 'Canon', 'Nikon', 'Fujifilm', 'Olympus', 'Leica', 'Pentax',
-    'Ricoh', 'Hasselblad', 'Phase One', 'RED Digital Cinema', 'Blackmagic Design',
-    'GoPro', 'DJI', 'Insta360', 'Garmin', 'TomTom', 'Magellan', 'Lowrance', 'Humminbird',
-    'Raymarine', 'Furuno', 'Simrad', 'B&G', 'Navico', 'Standard Horizon', 'Icom',
-    'Yaesu', 'Kenwood', 'Motorola', 'Midland', 'Uniden', 'Cobra', 'Whistler',
-    'Baofeng', 'TYT', 'Wouxun', 'Anytone', 'Ailunce', 'Radioddity', 'BridgeCom',
-    'Yeti', 'Pelican', 'Otterbox', 'Watershot', 'AquaTech', 'DiCAPac', 'Ewa-Marine',
-    'Peak Design', 'Think Tank', 'f-stop', 'Mindshift Gear', 'Tenba', 'Billingham',
-    'Domke', 'ONA', 'Filson', 'Wotancraft', 'Manfrotto', 'Gitzo', 'Really Right Stuff',
-    'Arca-Swiss', 'Kirk', 'Wimberley', 'Jobu Design', 'Promedia Gear', 'Benro',
-
-    // Extreme Sports & Action Sports
-    'GoPro', 'DJI', 'Insta360', 'Red Bull', 'Monster Energy', 'Fox Racing', 'Troy Lee Designs',
-    'Alpinestars', 'O\'Neal', 'Fly Racing', 'Thor', '100%', 'Leatt', 'EVS Sports',
-    'Pro-Tec', 'Triple Eight', 'S-One', 'Bern', 'TSG', 'POC', 'Demon',
-    'Sector 9', 'Loaded', 'Landyachtz', 'Santa Cruz', 'Element', 'Plan B', 'Girl',
-    'Vans', 'DC Shoes', 'Emerica', 'Etnies', 'Nike SB', 'Adidas Skateboarding',
-
-    // Climbing Hardware & Protection
-    'Metolius', 'C.A.M.P.', 'Fixe', 'Climb X', 'Mad Rock', 'Five Ten', 'Evolv', 'Butora',
-    'So iLL', 'Unparallel', 'Red Chili', 'Tenaya', 'Boreal', 'Ocun', 'Edelweiss',
-
-    // Mountaineering & Ice Climbing
-    'Cassin', 'Charlet Moser', 'CAMP', 'Simond', 'Stubai', 'AustriAlpin', 'Climbing Technology',
-    'Kong', 'Singing Rock', 'Rock Exotica', 'Yates', 'CMC Rescue', 'Petzl', 'Edelrid',
-
-    // Survival & Bushcraft
-    'Benchmade', 'Gerber', 'SOG', 'ESEE', 'Tops', 'Condor', 'Mora', 'Hultafors', 'Fiskars',
-    'Gränsfors Bruk', 'Husqvarna', 'Stihl', 'Fiskars', 'Bahco', 'Silky', 'Corona',
-    'Survival Metrics', 'SOL', 'UST', 'Light My Fire', 'UCO', 'Coghlan\'s', 'Coghlans',
-
-    // Russian & Eastern European Brands
-    'Splav', 'Bask', 'Red Fox', 'Normal', 'Nova Tour', 'Alexika', 'Сплав', 'Баск', 'Век',
-    'Манарага', 'BASK', 'Trek Planet', 'Green Glade', 'Norfin', 'Следопыт', 'Fisherman',
-    'Тонар', 'Helios', 'Наша Марка'
-  ])].sort()
+  function renderBrandOptions(brandList) {
+    brandList.innerHTML = ''
+    outdoorBrands.forEach(brand => {
+      const option = document.createElement('option')
+      option.value = brand
+      brandList.appendChild(option)
+    })
+  }
 
   function loadCategoryOrder(){
-    const defaultCategories = ['Shelter', 'Sleep System', 'Camp Furniture', 'Clothing', 'Footwear', 'Packs & Bags', 'Cooking', 'Electronics', 'Lighting', 'First Aid / Safety', 'Personal items / Documents', 'Knives & Tools', 'Technical Gear', 'Sports Equipment', 'Fishing & Hunting', 'Climbing & Rope', 'Winter & Snow', 'Photo/Video Gear', 'Ride Gear', 'Consumables']
-    // localStorage disabled - use defaults, data loaded from Supabase for authenticated users
-
     categorySortMode = {}
-
-    // Set all categories to name mode by default
-    defaultCategories.forEach(cat => {
-      categorySortMode[cat] = 'name'
-    })
-
-    categoryOrder = defaultCategories
+    categoryOrder = []
     updateCategorySelect()
   }
 
   // Update category select dropdown to match user's category order
   function updateCategorySelect() {
-    const defaultCategories = ['Shelter', 'Sleep System', 'Camp Furniture', 'Clothing', 'Footwear', 'Packs & Bags', 'Cooking', 'Electronics', 'Lighting', 'First Aid / Safety', 'Personal items / Documents', 'Knives & Tools', 'Technical Gear', 'Sports Equipment', 'Fishing & Hunting', 'Climbing & Rope', 'Winter & Snow', 'Photo/Video Gear', 'Ride Gear', 'Consumables']
-
-    // Use categoryOrder if available, otherwise use defaults
-    const orderedCategories = (categoryOrder && categoryOrder.length > 0) ? categoryOrder : defaultCategories
+    const orderedCategories = Array.isArray(categoryOrder) ? categoryOrder : []
 
     // Update main category select in add/edit form
     if (category) {
@@ -747,6 +472,20 @@
         filterCategory.value = currentFilterValue
       }
     }
+  }
+
+  function renderCategoryOptions(selectedCategory) {
+    const normalizedSelected = appHelpers.normalizeGearCategory(selectedCategory)
+    const orderedCategories = Array.isArray(categoryOrder) ? [...categoryOrder] : []
+
+    if (normalizedSelected && !orderedCategories.includes(normalizedSelected)) {
+      orderedCategories.push(normalizedSelected)
+    }
+
+    return orderedCategories.map(cat => {
+      const selected = normalizedSelected === cat ? 'selected' : ''
+      return `<option value="${escapeHtml(cat)}" ${selected}>${escapeHtml(cat)}</option>`
+    }).join('')
   }
 
   function load(){
@@ -799,17 +538,8 @@
 
     cardsEl.innerHTML = ''
 
-    // Use saved category order or fallback to defaults
-    const defaultCategories = ['Shelter', 'Sleep System', 'Camp Furniture', 'Clothing', 'Footwear', 'Packs & Bags', 'Cooking', 'Electronics', 'Lighting', 'First Aid / Safety', 'Personal items / Documents', 'Knives & Tools', 'Technical Gear', 'Sports Equipment', 'Fishing & Hunting', 'Climbing & Rope', 'Winter & Snow', 'Photo/Video Gear', 'Ride Gear', 'Consumables']
-
-    // Clean up category order from old category names
-    if (categoryOrder && categoryOrder.includes('Bag / Package')) {
-      categoryOrder = categoryOrder.filter(cat => cat !== 'Bag / Package')
-    }
-
-    // Sanitize saved category order: remove empty/null entries and legacy 'kitchen'
-    const sanitizedCategoryOrder = (categoryOrder || []).filter(c => typeof c === 'string' && c.trim().length > 0 && c.trim().toLowerCase() !== 'kitchen')
-    const allCategories = (sanitizedCategoryOrder && sanitizedCategoryOrder.length > 0) ? sanitizedCategoryOrder : defaultCategories
+    const sanitizedCategoryOrder = appHelpers.normalizeCategoryOrder(categoryOrder)
+    const allCategories = sanitizedCategoryOrder || []
 
     // Group items by category
     const grouped = {}
@@ -1016,21 +746,7 @@
               <div class="edit-section">
                 <select class="edit-field" data-field="category" style="text-transform:uppercase;font-size:11px;letter-spacing:0.5px;font-weight:500;padding:10px;">
                   <option value="">— No Category —</option>
-                  <option value="Shelter" ${it.category==='Shelter'?'selected':''}>Shelter</option>
-                  <option value="Sleep System" ${it.category==='Sleep System'?'selected':''}>Sleep System</option>
-                  <option value="Camp Furniture" ${it.category==='Camp Furniture'||it.category==='Furniture'?'selected':''}>Camp Furniture</option>
-                  <option value="Clothing" ${it.category==='Clothing'?'selected':''}>Clothing</option>
-                  <option value="Footwear" ${it.category==='Footwear'?'selected':''}>Footwear</option>
-                  <option value="Packs & Bags" ${it.category==='Packs & Bags'?'selected':''}>Packs & Bags</option>
-                  <option value="Cooking" ${it.category==='Cooking'||it.category==='Kitchen'?'selected':''}>Cooking</option>
-                  <option value="Electronics" ${it.category==='Electronics'||it.category==='Electronic'?'selected':''}>Electronics</option>
-                  <option value="Lighting" ${it.category==='Lighting'?'selected':''}>Lighting</option>
-                  <option value="First Aid / Safety" ${it.category==='First Aid / Safety'?'selected':''}>First Aid / Safety</option>
-                  <option value="Personal items / Documents" ${it.category==='Personal items / Documents'||it.category==='Personal items'?'selected':''}>Personal items / Documents</option>
-                  <option value="Knives & Tools" ${it.category==='Knives & Tools'||it.category==='Tools'?'selected':''}>Knives & Tools</option>
-                  <option value="Technical Gear" ${it.category==='Technical Gear'||it.category==='Equipment'?'selected':''}>Technical Gear</option>
-                  <option value="Sports Equipment" ${it.category==='Sports Equipment'?'selected':''}>Sports Equipment</option>
-                  <option value="Consumables" ${it.category==='Consumables'?'selected':''}>Consumables</option>
+                  ${renderCategoryOptions(it.category)}
                 </select>
               </div>
               <div class="edit-section">
@@ -1399,21 +1115,7 @@
                 <label>Category</label>
                 <select class=\"edit-field\" data-field=\"category\">
                   <option value=\"\">— No Category —</option>
-                  <option value=\"Shelter\" ${it.category==='Shelter'?'selected':''}>Shelter</option>
-                  <option value=\"Sleep System\" ${it.category==='Sleep System'?'selected':''}>Sleep System</option>
-                  <option value=\"Camp Furniture\" ${it.category==='Camp Furniture'||it.category==='Furniture'?'selected':''}>Camp Furniture</option>
-                  <option value=\"Clothing\" ${it.category==='Clothing'?'selected':''}>Clothing</option>
-                  <option value=\"Footwear\" ${it.category==='Footwear'?'selected':''}>Footwear</option>
-                  <option value=\"Packs & Bags\" ${it.category==='Packs & Bags'?'selected':''}>Packs & Bags</option>
-                  <option value=\"Cooking\" ${it.category==='Cooking'||it.category==='Kitchen'?'selected':''}>Cooking</option>
-                  <option value=\"Electronics\" ${it.category==='Electronics'||it.category==='Electronic'?'selected':''}>Electronics</option>
-                  <option value=\"Lighting\" ${it.category==='Lighting'?'selected':''}>Lighting</option>
-                  <option value=\"First Aid / Safety\" ${it.category==='First Aid / Safety'?'selected':''}>First Aid / Safety</option>
-                  <option value=\"Personal items / Documents\" ${it.category==='Personal items / Documents'||it.category==='Personal items'?'selected':''}>Personal items / Documents</option>
-                  <option value=\"Knives & Tools\" ${it.category==='Knives & Tools'||it.category==='Tools'?'selected':''}>Knives & Tools</option>
-                  <option value=\"Technical Gear\" ${it.category==='Technical Gear'||it.category==='Equipment'?'selected':''}>Technical Gear</option>
-                  <option value=\"Sports Equipment\" ${it.category==='Sports Equipment'?'selected':''}>Sports Equipment</option>
-                  <option value=\"Consumables\" ${it.category==='Consumables'?'selected':''}>Consumables</option>
+                  ${renderCategoryOptions(it.category)}
                 </select>
               </div>
               <div class=\"edit-section\">
@@ -2102,11 +1804,7 @@
       // Brand datalist
       const brandList = document.createElement('datalist')
       brandList.id = `inline-brand-list-${it.id}`
-      outdoorBrands.forEach(brand => {
-        const option = document.createElement('option')
-        option.value = brand
-        brandList.appendChild(option)
-      })
+      renderBrandOptions(brandList)
       document.body.appendChild(brandList)
 
       // Model datalist - empty initially, will be populated on brand input
@@ -3376,11 +3074,7 @@
     // Create brand datalist
     const brandList = document.createElement('datalist')
     brandList.id = 'brand-list'
-    outdoorBrands.forEach(brand => {
-      const option = document.createElement('option')
-      option.value = brand
-      brandList.appendChild(option)
-    })
+    renderBrandOptions(brandList)
     document.body.appendChild(brandList)
     brandInput.setAttribute('list', 'brand-list')
 
@@ -3830,6 +3524,7 @@
 
   // initialization - only authenticated users can access data
   async function initializeApp() {
+    await loadOutdoorBrands()
     await initAuth()
 
     if (!isAuthenticated) {
@@ -5372,7 +5067,7 @@
   function renderCategoryCheckboxes(selectedCategories = []){
     if(!categoriesCheckboxesEl) return
 
-    const allCategories = ['Shelter', 'Sleep System', 'Camp Furniture', 'Clothing', 'Footwear', 'Packs & Bags', 'Cooking', 'Electronics', 'Lighting', 'First Aid / Safety', 'Personal items / Documents', 'Knives & Tools', 'Technical Gear', 'Sports Equipment', 'Fishing & Hunting', 'Climbing & Rope', 'Winter & Snow', 'Photo/Video Gear', 'Ride Gear', 'Consumables']
+    const allCategories = Array.isArray(categoryOrder) ? categoryOrder : []
 
     categoriesCheckboxesEl.innerHTML = allCategories.map(cat => {
       const checked = selectedCategories.includes(cat) ? 'checked' : ''
@@ -6034,6 +5729,15 @@
     categoryOrder = [...categoriesWithItems, ...emptyCategoriesInOrder]
   }
 
+  async function loadOutdoorBrands() {
+    try {
+      outdoorBrands = await SupabaseService.getOutdoorBrands()
+    } catch (err) {
+      console.warn('Error loading outdoor brands:', err)
+      outdoorBrands = []
+    }
+  }
+
   async function loadFromSupabase() {
     if (isLoading) return // Prevent multiple simultaneous loads
     isLoading = true
@@ -6125,7 +5829,7 @@
       // Map items with cached URLs (no await needed)
       items = supabaseItems.map((item) => ({
         id: item.id,
-        category: item.category === 'Bag / Package' ? 'Packs & Bags' : item.category,
+        category: item.category,
         name: item.name,
         brand: item.brand,
         model: item.model,
@@ -6147,15 +5851,12 @@
       // Don't load checklists on initial page load to speed up startup
       checklists = []
 
+      await loadOutdoorBrands()
+
       // Load category order
       const orderData = await SupabaseService.getCategoryOrder()
-      const allPossibleCategories = ['Shelter', 'Sleep System', 'Camp Furniture', 'Clothing', 'Footwear', 'Packs & Bags', 'Cooking', 'Electronics', 'Lighting', 'First Aid / Safety', 'Personal items / Documents', 'Knives & Tools', 'Technical Gear', 'Sports Equipment', 'Fishing & Hunting', 'Climbing & Rope', 'Winter & Snow', 'Photo/Video Gear', 'Ride Gear', 'Consumables']
-
       if (orderData && orderData.categories) {
-        // Merge saved order with new categories
-        const savedCategories = orderData.categories.filter(cat => allPossibleCategories.includes(cat))
-        const newCategories = allPossibleCategories.filter(cat => !savedCategories.includes(cat))
-        categoryOrder = [...savedCategories, ...newCategories]
+        categoryOrder = appHelpers.normalizeCategoryOrder(orderData.categories)
         categorySortMode = orderData.sort_modes || {}
       } else {
         loadCategoryOrder() // Use defaults
@@ -6203,7 +5904,7 @@
         accessSource: cl.access_source || cl.accessSource || 'mine',
         items: (cl.items || []).map(item => ({
           ...item,
-          category: item.category === 'Bag / Package' ? 'Packs & Bags' : item.category
+          category: item.category
         })),
         created: cl.created_at
       }))
@@ -6236,7 +5937,7 @@
           }
           const newItem = {
             id: newRecord.id,
-            category: newRecord.category === 'Bag / Package' ? 'Packs & Bags' : newRecord.category,
+            category: newRecord.category,
             name: newRecord.name,
             brand: newRecord.brand,
             model: newRecord.model,
@@ -6264,7 +5965,7 @@
             }
             items[index] = {
               ...items[index],
-              category: newRecord.category === 'Bag / Package' ? 'Packs & Bags' : newRecord.category,
+              category: newRecord.category,
               name: newRecord.name,
               brand: newRecord.brand,
               model: newRecord.model,
