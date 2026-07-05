@@ -1,12 +1,8 @@
 ALL MY GEAR - что нового
 Версия: v1.0.1
-Состояние аудита: v1.0.1-1-g931dc49-dirty
+Состояние аудита: v1.0.1-2-gfde5e04-dirty
 Период: 2026-06-28 - 2026-07-05
 Дата аудита: 2026-07-05
-
-Итог
-- За последние 7 дней приложение прошло большой технический релиз вокруг Supabase: схема БД оформлена миграциями, публичный доступ к карточкам исправлен, каталоги вынесены из фронтенда в таблицы, добавлены тесты и эксплуатационные инструкции.
-- Тег v1.0.1 стоит на коммите 32a4bf0 "Fix public card"; после тега есть дополнительный коммит 931dc49 "Save" и незакоммиченные изменения.
 
 Функциональные изменения
 - Исправлен публичный просмотр карточки снаряжения: уточнён контракт visible gear card, обновлены UI-обработчики, CSP-тесты и миграция 202607050001.
@@ -27,7 +23,7 @@ ALL MY GEAR - что нового
   - scripts/apply-migrations.sh - применяет SQL-миграции к supabase-db, поддерживает DRY_RUN.
 - В рабочем слое Go/Docker подняты до Go 1.26: Dockerfile, go.mod, Makefile.
 - .gitignore перенастроен под backup/supabase_user_switch_backup_20260703.dump.
-- В репозитории появились локальные backup-артефакты за 2026-07-05: PostgreSQL dumps, manifest, supabase.env и storage archive.
+- Backup-артефакты вынесены из индекса: локальные PostgreSQL dumps, manifest, supabase.env и storage archive не должны попадать в релизный commit.
 
 Документация
 - Переписаны и актуализированы README, ARCHITECTURE, DATA_MODEL, OPERATIONS, PROJECT_ANALYSIS и REMARKS_ANALYSIS под фактический Go + self-hosted Supabase runtime.
@@ -39,9 +35,3 @@ ALL MY GEAR - что нового
 - Покрыты app-helpers, CSP-конфигурация, photo URL cache, Supabase service contract, visibility UI и database migrations.
 - Добавлены тесты для новых shell-скриптов apply-migrations и restore-backup.
 - Миграции проверяются тестами на наличие ключевых таблиц, индексов, RLS/visibility правил и публичного card contract.
-
-Риски и незавершённое
-- Текущий рабочий каталог не чистый: есть изменения после v1.0.1 и незакоммиченные файлы.
-- В незакоммиченном diff заполнены реальные Supabase/JWT/S3 секреты в supabase/.env и anon key в scripts/run.sh. Перед коммитом/публикацией их нужно вынести из git-tracked файлов или заменить на шаблоны.
-- Локальные backup-дампы сейчас untracked; их не стоит коммитить в репозиторий.
-- Версия в UI всё ещё v1.0.1, хотя git-состояние уже v1.0.1-1-g931dc49-dirty. Для следующего релиза стоит поднять номер версии после стабилизации рабочего слоя.
