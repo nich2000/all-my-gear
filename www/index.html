@@ -21,8 +21,8 @@
                  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://all-my-gear.pro:8443 https://*.supabase.co;
                  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
                  font-src 'self' https://fonts.gstatic.com;
-                 img-src 'self' data: blob: https://all-my-gear.pro:8443 https://*.supabase.co;
-                 connect-src 'self' https://all-my-gear.pro:8443 https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://www.unsplash.com https://api.unsplash.com https://images.unsplash.com;
+                 img-src 'self' data: blob: http://localhost:8000 http://127.0.0.1:8000 https://all-my-gear.pro:8443 https://*.supabase.co;
+                 connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://all-my-gear.pro:8443 https://*.supabase.co wss://*.supabase.co https://cdn.jsdelivr.net https://www.unsplash.com https://api.unsplash.com https://images.unsplash.com;
                  worker-src 'self' blob:;
                  child-src 'self' blob:;
                  frame-src 'none';
@@ -53,7 +53,10 @@
 <!--  <script src="lib/supabase.min.js"></script>-->
 
   <script src="js/supabase-config.js"></script>
+  <script src="js/app-helpers.js"></script>
+  <script src="js/visibility-ui.js"></script>
   <script src="js/supabase-service.js"></script>
+  <script src="js/photo-url-cache.js"></script>
 <!--  <script src="js/app.js"></script>-->
 </head>
 
@@ -253,6 +256,11 @@
           </div>
         </div>
 
+        <div class="form-section">
+          <label class="field-label">Visibility</label>
+          <div id="gearVisibilityPicker"></div>
+        </div>
+
         <div class="form-section" id="addToChecklistsSection" style="display:none;">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
             <label class="field-label" style="margin:0;">Add to Checklists</label>
@@ -327,6 +335,11 @@
                 </div>
               </div>
             </div>
+          </div>
+
+          <div class="form-section">
+            <h3 class="section-title">Publishing</h3>
+            <div id="checklistVisibilityPicker"></div>
           </div>
 
           <!-- Categories Section -->
@@ -478,7 +491,25 @@
             </div>
             <div class="form-section">
               <label class="field-label">Password</label>
-              <input id="authPassword" type="password" class="field-input" required placeholder="••••••••" minlength="6">
+              <div class="password-field">
+                <input id="authPassword" type="password" class="field-input" required placeholder="••••••••" minlength="6">
+                <button id="authPasswordToggle" class="password-toggle" type="button" aria-label="Show password" aria-pressed="false" title="Show password">
+                  <svg class="password-toggle-icon password-toggle-icon-show" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2.25 12s3.5-6.5 9.75-6.5S21.75 12 21.75 12s-3.5 6.5-9.75 6.5S2.25 12 2.25 12z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </svg>
+                  <svg class="password-toggle-icon password-toggle-icon-hide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M3 3l18 18"></path>
+                    <path d="M10.6 10.6A2 2 0 0012 14a2 2 0 001.4-.6"></path>
+                    <path d="M9.9 5.7A9.7 9.7 0 0112 5.5c6.25 0 9.75 6.5 9.75 6.5a17.4 17.4 0 01-2.9 3.6"></path>
+                    <path d="M6.6 6.9C3.8 8.8 2.25 12 2.25 12s3.5 6.5 9.75 6.5c1.4 0 2.7-.3 3.8-.8"></path>
+                  </svg>
+                </button>
+              </div>
+              <label class="auth-remember-row">
+                <input id="authRememberCredentials" type="checkbox">
+                <span>Remember login and password</span>
+              </label>
             </div>
             <div id="authError" style="color:#fb7185;font-size:13px;margin-bottom:12px;display:none;"></div>
             <div class="form-actions">
@@ -767,6 +798,18 @@
             <label for="storageNameInput">Storage Name</label>
             <input type="text" id="storageNameInput" placeholder="e.g., Garage, Basement, Closet" required autocomplete="off">
           </div>
+          <div class="form-group">
+            <label for="storageAddressInput">Address</label>
+            <input type="text" id="storageAddressInput" placeholder="Optional address" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label for="storageDescriptionInput">Description</label>
+            <textarea id="storageDescriptionInput" placeholder="Optional notes" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="storageRatingInput">Rating</label>
+            <input type="number" id="storageRatingInput" min="0" max="5" step="1" value="0">
+          </div>
           <div class="form-actions">
             <button type="button" id="cancelCreateStorage" class="btn-secondary">Cancel</button>
             <button type="submit" class="btn-primary">Create Storage</button>
@@ -793,21 +836,55 @@
       </div>
       <div class="modal-body">
         <!-- Add new storage form -->
-        <div style="margin-bottom:20px;padding:16px;background:rgba(255,122,58,0.05);border:1px solid rgba(255,122,58,0.2);border-radius:8px;">
-          <div style="display:flex;gap:12px;align-items:flex-end;">
-            <div style="flex:1;">
-              <label class="field-label" style="margin-bottom:6px;display:block;">New Storage Location</label>
-              <input type="text" id="newStorageNameInManage" class="field-input" placeholder="Enter storage name..." style="margin:0;">
+        <details id="addStorageForm" class="manage-storage-form add-storage-form">
+          <summary class="manage-storage-form-header">
+            <div>
+              <label class="field-label">New Storage Location</label>
+              <div class="form-hint">Create a place where gear can be stored and filtered later.</div>
             </div>
-            <button id="addStorageInManage" class="btn primary" style="white-space:nowrap;">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:6px;">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Add
-            </button>
+          </summary>
+          <div class="add-storage-form-body">
+            <div class="add-storage-row add-storage-name-rating-row">
+              <div class="manage-storage-field add-storage-name-field">
+                <label class="field-label" for="newStorageNameInManage">Storage name *</label>
+                <input type="text" id="newStorageNameInManage" class="field-input" placeholder="Garage, Closet, Car trunk" title="Required. Used in storage filters and item cards.">
+                <div class="form-hint">Used in storage filters and item cards.</div>
+              </div>
+              <div class="manage-storage-field manage-storage-field-rating add-storage-rating-field">
+                <label class="field-label" for="newStorageRatingInManage">Rating</label>
+                <input type="hidden" id="newStorageRatingInManage" value="0">
+                <div class="storage-rating-stars" data-rating-input="newStorageRatingInManage" role="radiogroup" aria-label="Storage rating">
+                  <button type="button" class="storage-rating-star" data-rating-value="1" aria-label="1 star">★</button>
+                  <button type="button" class="storage-rating-star" data-rating-value="2" aria-label="2 stars">★</button>
+                  <button type="button" class="storage-rating-star" data-rating-value="3" aria-label="3 stars">★</button>
+                  <button type="button" class="storage-rating-star" data-rating-value="4" aria-label="4 stars">★</button>
+                  <button type="button" class="storage-rating-star" data-rating-value="5" aria-label="5 stars">★</button>
+                </div>
+                <div class="form-hint">0 means unrated, 5 means best.</div>
+              </div>
+            </div>
+            <div class="manage-storage-field add-storage-address-field">
+              <label class="field-label" for="newStorageAddressInManage">Address</label>
+              <input type="text" id="newStorageAddressInManage" class="field-input" placeholder="Street, building, room" title="Optional physical location.">
+              <div class="form-hint">Optional physical location.</div>
+            </div>
+            <div class="manage-storage-field manage-storage-field-description add-storage-description-field">
+              <label class="field-label" for="newStorageDescriptionInManage">Description</label>
+              <textarea id="newStorageDescriptionInManage" class="field-input" placeholder="Shelf, box, access notes..." rows="2" title="Short note shown in storage management."></textarea>
+              <div class="form-hint">Short note shown in storage management.</div>
+            </div>
+            <div class="manage-storage-field manage-storage-action add-storage-action">
+              <button id="addStorageInManage" class="btn primary" title="Add this storage location to the directory." aria-label="Add storage location">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:6px;">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Add
+              </button>
+              <div class="form-hint">Saves the storage and clears this form.</div>
+            </div>
           </div>
-        </div>
+        </details>
 
         <div id="storagesList" class="storages-list">
           <!-- Populated by JS -->
@@ -834,18 +911,46 @@
     </div>
   </div>
 
-  <!-- Edit Storage Name Modal -->
+  <!-- Edit Storage Modal -->
   <div id="editStorageNameModal" class="modal-overlay hidden">
-    <div class="modal-content" style="max-width:520px;">
+    <div class="modal-content" style="max-width:760px;">
       <div class="modal-header">
         <div class="modal-title-section">
-          <h2 id="editStorageNameTitle">Rename Storage</h2>
-          <p class="modal-subtitle">Enter new name for storage location</p>
+          <h2 id="editStorageNameTitle">Edit Storage</h2>
+          <p class="modal-subtitle">Update the storage location details used in filters and item cards.</p>
         </div>
       </div>
       <div class="modal-body" style="padding:24px 28px;">
-        <div class="form-section" style="margin-bottom:20px;">
-          <input type="text" id="editStorageNameInput" class="field-input" placeholder="Storage name..." style="width:100%;">
+        <div class="manage-storage-form edit-storage-form">
+          <div class="manage-storage-form-grid">
+            <div class="manage-storage-field">
+              <label class="field-label" for="editStorageNameInput">Storage name *</label>
+              <input type="text" id="editStorageNameInput" class="field-input" placeholder="Garage, Closet, Car trunk" title="Required. Used in storage filters and item cards.">
+              <span class="field-hint">Used in storage filters and item cards.</span>
+            </div>
+            <div class="manage-storage-field">
+              <label class="field-label" for="editStorageAddressInput">Address</label>
+              <input type="text" id="editStorageAddressInput" class="field-input" placeholder="Street, building, room" title="Optional physical location.">
+              <span class="field-hint">Optional physical location.</span>
+            </div>
+            <div class="manage-storage-field manage-storage-field-rating">
+              <label class="field-label" for="editStorageRatingInput">Rating</label>
+              <input type="hidden" id="editStorageRatingInput" value="0">
+              <div class="storage-rating-stars" data-rating-input="editStorageRatingInput" role="radiogroup" aria-label="Storage rating">
+                <button type="button" class="storage-rating-star" data-rating-value="1" aria-label="1 star">★</button>
+                <button type="button" class="storage-rating-star" data-rating-value="2" aria-label="2 stars">★</button>
+                <button type="button" class="storage-rating-star" data-rating-value="3" aria-label="3 stars">★</button>
+                <button type="button" class="storage-rating-star" data-rating-value="4" aria-label="4 stars">★</button>
+                <button type="button" class="storage-rating-star" data-rating-value="5" aria-label="5 stars">★</button>
+              </div>
+              <span class="field-hint">0 means unrated, 5 means best.</span>
+            </div>
+            <div class="manage-storage-field manage-storage-field-description">
+              <label class="field-label" for="editStorageDescriptionInput">Description</label>
+              <textarea id="editStorageDescriptionInput" class="field-input" placeholder="Shelf, box, access notes..." rows="2" title="Short note shown in storage management."></textarea>
+              <span class="field-hint">Short note shown in storage management.</span>
+            </div>
+          </div>
         </div>
         <div class="form-actions" style="border-top:none;padding-top:0;margin-top:0;">
           <button id="cancelEditStorageName" class="btn-secondary">Cancel</button>

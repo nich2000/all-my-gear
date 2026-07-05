@@ -42,11 +42,32 @@ function getSupabase() {
   return supabaseClient
 }
 
+function isMissingEntitlementsSchemaError(error) {
+  return (error && error.code === 'PGRST205') || /public\.user_entitlements/i.test(error?.message || '')
+}
+
+function isMissingVisibleSearchRpcError(error, rpcName) {
+  const message = error?.message || ''
+  return (error && error.code === 'PGRST202') || message.includes(rpcName)
+}
+
 // Start initialization attempts
 tryInitSupabase()
 
 const SupabaseService = {
   currentUser: null,
+
+  mapGearItem(row) {
+    return window.VisibilityUI.mapGearRowToModel(row, this.currentUser?.id)
+  },
+
+  mapChecklist(row) {
+    return window.VisibilityUI.mapChecklistRowToModel(row, this.currentUser?.id)
+  },
+
+  mapStorage(row) {
+    return window.VisibilityUI.mapStorageRowToModel(row, this.currentUser?.id)
+  },
 
   // ==================== AUTHENTICATION ====================
 
@@ -214,7 +235,7 @@ const SupabaseService = {
       .order('created_at', { ascending: false })
 
     if (error) throw error
-    return data || []
+    return (data || []).map(row => this.mapGearItem(row))
   },
 
   // Cache for max order index to avoid extra queries
@@ -263,6 +284,7 @@ const SupabaseService = {
         comment: item.comment || '',
         image_path: item.image || null,
         storage_id: item.storageId || null,
+        ...window.VisibilityUI.buildResourceSavePayload(item),
         order_index: newOrderIndex,
         created_at: item.created ? new Date(item.created).toISOString() : new Date().toISOString()
       }])
@@ -270,7 +292,7 @@ const SupabaseService = {
       .maybeSingle()
 
     if (error) throw error
-    return data
+    return data ? this.mapGearItem(data) : data
   },
 
   async updateGearItem(id, updates) {
@@ -283,6 +305,10 @@ const SupabaseService = {
       // For now, save base64 directly (can be changed to upload to storage later)
       imageToSave = updates.image
     }
+
+    const visibilityUpdates = updates.visibility !== undefined
+      ? window.VisibilityUI.buildResourceSavePayload(updates)
+      : {}
 
     // Filter and map fields to match database schema
     const dbUpdates = {
@@ -297,6 +323,7 @@ const SupabaseService = {
       comment: updates.comment,
       image_path: imageToSave, // Map image to image_path
       storage_id: updates.storageId !== undefined ? (updates.storageId || null) : undefined,
+      ...visibilityUpdates,
       order_index: updates.order_index,
       updated_at: new Date().toISOString()
     }
@@ -317,7 +344,7 @@ const SupabaseService = {
       .maybeSingle()
 
     if (error) throw error
-    return data
+    return data ? this.mapGearItem(data) : data
   },
 
   async deleteGearItem(id) {
@@ -417,17 +444,22 @@ const SupabaseService = {
         items: checklist.items || [],
         start_date: checklist.startDate || null,
         end_date: checklist.endDate || null,
+        ...window.VisibilityUI.buildResourceSavePayload(checklist),
         created_at: checklist.created ? new Date(checklist.created).toISOString() : new Date().toISOString()
       }])
       .select()
       .maybeSingle()
 
     if (error) throw error
-    return data
+    return data ? this.mapChecklist(data) : data
   },
 
   async updateChecklist(id, updates) {
     if (!this.currentUser) throw new Error('Not authenticated')
+
+    const visibilityUpdates = updates.visibility !== undefined
+      ? window.VisibilityUI.buildResourceSavePayload(updates)
+      : {}
 
     // Map frontend fields to database fields and filter out read-only fields
     // Support both camelCase (from form) and snake_case (from database)
@@ -437,6 +469,7 @@ const SupabaseService = {
       items: updates.items,
       start_date: updates.startDate || updates.start_date || null,
       end_date: updates.endDate || updates.end_date || null,
+      ...visibilityUpdates,
       updated_at: new Date().toISOString()
     }
 
@@ -449,7 +482,7 @@ const SupabaseService = {
       .maybeSingle()
 
     if (error) throw error
-    return data
+    return data ? this.mapChecklist(data) : data
   },
 
   async deleteChecklist(id) {
@@ -544,6 +577,204 @@ const SupabaseService = {
   // Provide a simple alias that calls `saveItemsOrder` so older call sites continue to work.
   async saveItems(items) {
     return this.saveItemsOrder(items)
+  },
+
+  // ==================== ENTITLEMENTS / ACCESS GRANTS ====================
+
+  async getCurrentUserEntitlements() {
+    if (!this.currentUser) return { canUsePrivateVisibility: false }
+
+    const { data, error } = await supabaseClient
+      .from('user_entitlements')
+      .select('*')
+      .eq('user_id', this.currentUser.id)
+      .maybeSingle()
+
+    if (error) {
+      if (isMissingEntitlementsSchemaError(error)) {
+        console.info('Entitlements schema is not available; using free visibility defaults')
+        return { canUsePrivateVisibility: false }
+      }
+      console.warn('Entitlements lookup failed, falling back to free plan:', error)
+      return { canUsePrivateVisibility: false }
+    }
+
+    return {
+      ...(data || {}),
+      canUsePrivateVisibility: Boolean(data?.can_make_private || data?.can_share_with_users || data?.can_use_private_visibility || data?.private_visibility_enabled)
+    }
+  },
+
+  async canUsePrivateVisibility() {
+    const entitlements = await this.getCurrentUserEntitlements()
+    return window.VisibilityUI.hasPrivateVisibility(entitlements)
+  },
+
+  async getResourceAccessGrants(resourceType, resourceId) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const { data, error } = await supabaseClient
+      .from('resource_access_grants')
+      .select('*')
+      .eq('resource_type', this.normalizeResourceType(resourceType))
+      .eq('resource_id', resourceId)
+      .eq('owner_id', this.currentUser.id)
+      .order('created_at', { ascending: true })
+
+    if (error) throw error
+    return data || []
+  },
+
+  async setResourceVisibility(resourceType, resourceId, visibility) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const table = this.getResourceTable(resourceType)
+    const payload = window.VisibilityUI.buildResourceSavePayload({ visibility })
+
+    const { data, error } = await supabaseClient
+      .from(table)
+      .update({ ...payload, updated_at: new Date().toISOString() })
+      .eq('id', resourceId)
+      .eq('user_id', this.currentUser.id)
+      .select()
+      .maybeSingle()
+
+    if (error) throw error
+    return this.mapResourceRow(resourceType, data)
+  },
+
+  async grantResourceAccess(resourceType, resourceId, emailOrUserId) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const trimmed = (emailOrUserId || '').trim()
+    if (!trimmed) throw new Error('Email or user id is required')
+
+    const grant = {
+      resource_type: this.normalizeResourceType(resourceType),
+      resource_id: resourceId,
+      owner_id: this.currentUser.id
+    }
+
+    if (trimmed.includes('@')) {
+      grant.grantee_email = trimmed.toLowerCase()
+    } else {
+      grant.grantee_user_id = trimmed
+    }
+
+    const { data, error } = await supabaseClient
+      .from('resource_access_grants')
+      .insert(grant)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  async revokeResourceAccess(grantId) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const { error } = await supabaseClient
+      .from('resource_access_grants')
+      .delete()
+      .eq('id', grantId)
+      .eq('owner_id', this.currentUser.id)
+
+    if (error) throw error
+  },
+
+  getResourceTable(resourceType) {
+    const tables = {
+      gear: 'gear_items',
+      gear_item: 'gear_items',
+      item: 'gear_items',
+      checklist: 'checklists',
+      storage: 'storages'
+    }
+
+    const table = tables[resourceType]
+    if (!table) throw new Error(`Unsupported resource type: ${resourceType}`)
+    return table
+  },
+
+  normalizeResourceType(resourceType) {
+    const types = {
+      gear: 'gear_item',
+      gear_item: 'gear_item',
+      item: 'gear_item',
+      checklist: 'checklist',
+      storage: 'storage'
+    }
+
+    const normalized = types[resourceType]
+    if (!normalized) throw new Error(`Unsupported resource type: ${resourceType}`)
+    return normalized
+  },
+
+  mapResourceRow(resourceType, row) {
+    if (!row) return row
+    if (['gear', 'gear_item', 'item'].includes(resourceType)) return this.mapGearItem(row)
+    if (resourceType === 'checklist') return this.mapChecklist(row)
+    if (resourceType === 'storage') return this.mapStorage(row)
+    return row
+  },
+
+  // ==================== GLOBAL SEARCH ====================
+
+  handleVisibleSearchError(error, rpcName) {
+    if (isMissingVisibleSearchRpcError(error, rpcName)) {
+      console.info(`${rpcName} is not available; returning empty visible search results`)
+      return []
+    }
+    throw error
+  },
+
+  async searchVisibleGear(query = '', filters = {}) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const { data, error } = await supabaseClient.rpc('search_visible_gear', {
+      search_query: query || '',
+      result_limit: filters.limit || 50,
+      result_offset: filters.offset || 0
+    })
+
+    if (error) return this.handleVisibleSearchError(error, 'search_visible_gear')
+    return this.filterVisibleResults((data || []).map(row => this.mapGearItem(row)), filters)
+  },
+
+  async searchVisibleChecklists(query = '', filters = {}) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const { data, error } = await supabaseClient.rpc('search_visible_checklists', {
+      search_query: query || '',
+      result_limit: filters.limit || 50,
+      result_offset: filters.offset || 0
+    })
+
+    if (error) return this.handleVisibleSearchError(error, 'search_visible_checklists')
+    return this.filterVisibleResults((data || []).map(row => this.mapChecklist(row)), filters)
+  },
+
+  async searchVisibleStorages(query = '', filters = {}) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const { data, error } = await supabaseClient.rpc('search_visible_storages', {
+      search_query: query || '',
+      result_limit: filters.limit || 50,
+      result_offset: filters.offset || 0
+    })
+
+    if (error) return this.handleVisibleSearchError(error, 'search_visible_storages')
+    return this.filterVisibleResults((data || []).map(row => this.mapStorage(row)), filters)
+  },
+
+  filterVisibleResults(rows, filters = {}) {
+    const scope = filters.visibility || filters.scope || 'all'
+    if (scope === 'all' || scope === 'all_visible') return rows
+    if (scope === 'mine') return rows.filter(row => row.accessSource === 'mine' || row.access_source === 'mine')
+    if (scope === 'public') return rows.filter(row => row.visibility === 'public' || row.accessSource === 'public' || row.access_source === 'public')
+    if (scope === 'shared') return rows.filter(row => row.accessSource === 'shared' || row.access_source === 'shared' || row.accessSource === 'shared_with_me' || row.access_source === 'shared_with_me')
+    return rows
   },
 
   // ==================== STORAGE ====================
@@ -1104,41 +1335,67 @@ const SupabaseService = {
       .order('name', { ascending: true })
 
     if (error) throw error
-    return data || []
+    return (data || []).map(row => this.mapStorage(row))
   },
 
-  async createStorage(name) {
+  async createStorage(nameOrStorage) {
     if (!this.currentUser) throw new Error('Not authenticated')
+
+    const storage = typeof nameOrStorage === 'string'
+      ? { name: nameOrStorage }
+      : (nameOrStorage || {})
 
     const { data, error } = await supabaseClient
       .from('storages')
       .insert({
         user_id: this.currentUser.id,
-        name: name.trim()
+        name: storage.name.trim(),
+        address: storage.address || null,
+        description: storage.description || null,
+        rating: storage.rating || 0,
+        ...window.VisibilityUI.buildResourceSavePayload(storage)
       })
       .select()
       .single()
 
     if (error) throw error
-    return data
+    return this.mapStorage(data)
   },
 
-  async updateStorage(id, name) {
+  async updateStorage(id, nameOrUpdates) {
     if (!this.currentUser) throw new Error('Not authenticated')
+
+    const updates = typeof nameOrUpdates === 'string'
+      ? { name: nameOrUpdates }
+      : (nameOrUpdates || {})
+
+    const visibilityUpdates = updates.visibility !== undefined
+      ? window.VisibilityUI.buildResourceSavePayload(updates)
+      : {}
+
+    const updateData = {
+      name: updates.name !== undefined ? updates.name.trim() : undefined,
+      address: updates.address !== undefined ? (updates.address || null) : undefined,
+      description: updates.description !== undefined ? (updates.description || null) : undefined,
+      rating: updates.rating !== undefined ? (updates.rating || 0) : undefined,
+      ...visibilityUpdates,
+      updated_at: new Date().toISOString()
+    }
+
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined) delete updateData[key]
+    })
 
     const { data, error } = await supabaseClient
       .from('storages')
-      .update({
-        name: name.trim(),
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id)
       .eq('user_id', this.currentUser.id)
       .select()
       .single()
 
     if (error) throw error
-    return data
+    return this.mapStorage(data)
   },
 
   async deleteStorage(id) {
@@ -1163,14 +1420,7 @@ const SupabaseService = {
     const shareCode = this.generateShareCode()
 
     // Prepare checklist data (passed from client to avoid DB query)
-    const checklistData = {
-      name: checklist.name,
-      created_at: checklist.created,
-      start_date: checklist.startDate,
-      end_date: checklist.endDate,
-      tags: checklist.tags,
-      items: checklist.items || []
-    }
+    const checklistData = window.AppHelpers.buildChecklistShareData(checklist)
 
     // Create share record (reusing shared_items table with checklist_id field)
     const { data, error } = await supabaseClient
@@ -1189,7 +1439,7 @@ const SupabaseService = {
     if (error) throw error
     return {
       shareCode,
-      shareUrl: `${window.location.origin}${window.location.pathname}?checklist=${shareCode}`
+      shareUrl: window.AppHelpers.buildChecklistShareUrl(window.location.origin, window.location.pathname, shareCode)
     }
   },
 
@@ -1226,3 +1476,5 @@ const SupabaseService = {
     }
   }
 }
+
+window.SupabaseService = SupabaseService

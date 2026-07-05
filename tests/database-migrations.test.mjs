@@ -1,0 +1,197 @@
+import assert from 'node:assert/strict'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import test from 'node:test'
+
+const migrationsDir = new URL('../supabase/migrations/', import.meta.url)
+const visibilityChecksFile = new URL('../supabase/tests/visibility_access_checks.sql', import.meta.url)
+
+function readMigrations() {
+  assert.equal(existsSync(migrationsDir), true, 'supabase/migrations must exist')
+
+  const files = readdirSync(migrationsDir)
+    .filter(name => name.endsWith('.sql'))
+    .sort()
+
+  assert.ok(files.length > 0, 'at least one SQL migration is required')
+
+  return files.map(name => ({
+    name,
+    sql: readFileSync(join(migrationsDir.pathname, name), 'utf8')
+  }))
+}
+
+function compact(sql) {
+  return sql.replace(/\s+/g, ' ').toLowerCase()
+}
+
+test('database migrations define the live schema without the legacy share table', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.equal(allSql.includes('create table public.public_gear_shares'), false)
+  assert.equal(allSql.includes('insert into "public"."public_gear_shares"'), false)
+  assert.ok(allSql.includes('drop table if exists public.public_gear_shares'))
+
+  assert.ok(allSql.includes('create table if not exists public.storages'))
+  assert.ok(allSql.includes('create table if not exists public.gear_items'))
+  assert.ok(allSql.indexOf('create table if not exists public.storages') < allSql.indexOf('create table if not exists public.gear_items'))
+})
+
+test('storage deletion and public shares are enforced by database constraints', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.match(allSql, /foreign key \(storage_id\) references public\.storages\(id\) on delete set null/)
+  assert.match(allSql, /constraint check_item_or_checklist check \(\(item_id is not null\) <> \(checklist_id is not null\)\)/)
+  assert.match(allSql, /foreign key \(item_id\) references public\.gear_items\(id\) on delete cascade/)
+  assert.match(allSql, /foreign key \(checklist_id\) references public\.checklists\(id\) on delete cascade/)
+})
+
+test('owner update policies keep reassigned rows within the current user', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  for (const table of ['storages', 'gear_items', 'checklists', 'category_order']) {
+    assert.match(
+      allSql,
+      new RegExp(`on public\\.${table} for update using \\(auth\\.uid\\(\\) = user_id\\) with check \\(auth\\.uid\\(\\) = user_id\\)`)
+    )
+  }
+
+  assert.match(
+    allSql,
+    /on public\.shared_items for update to authenticated using \(auth\.uid\(\) = owner_id\) with check \(auth\.uid\(\) = owner_id\)/
+  )
+})
+
+test('database migrations preserve the repaired MSR Quick 2 System image path', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.ok(allSql.includes("update public.gear_items set image_path = 'a8cf0468-ac26-4897-97a1-68fbac9d5364/c4cbb0f8-8ab3-42f7-871e-e5f43579b174.jpg'"))
+  assert.ok(allSql.includes("id = 'c4cbb0f8-8ab3-42f7-871e-e5f43579b174'"))
+  assert.ok(allSql.includes("name = 'набор посуды'"))
+  assert.ok(allSql.includes("brand = 'msr'"))
+  assert.ok(allSql.includes("model = 'quick 2 system'"))
+})
+
+test('database migrations are safe to apply to an existing production schema', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.equal(allSql.includes('create policy "'), false, 'policies must be recreated through idempotent blocks')
+
+  for (const [table, columns] of Object.entries({
+    gear_items: ['order_index', 'comment', 'storage_id'],
+    checklists: ['start_date', 'end_date'],
+    shared_items: ['item_id', 'checklist_id']
+  })) {
+    for (const column of columns) {
+      assert.ok(
+        allSql.includes(`alter table if exists public.${table} add column if not exists ${column}`),
+        `${table}.${column} must be added idempotently for existing databases`
+      )
+    }
+  }
+
+  assert.match(allSql, /drop policy if exists "users can update their own gear items" on public\.gear_items/)
+  assert.match(allSql, /drop policy if exists "anyone can read non-expired public shares" on public\.shared_items/)
+})
+
+test('database migrations define visibility, entitlements, grants and visible search RPCs', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  for (const table of ['gear_items', 'checklists', 'storages']) {
+    assert.ok(allSql.includes(`alter table if exists public.${table} add column if not exists visibility`))
+    assert.ok(allSql.includes(`alter table if exists public.${table} add column if not exists published_at`))
+    assert.match(allSql, new RegExp(`create index if not exists idx_${table}_visibility`))
+  }
+
+  assert.ok(allSql.includes('create or replace view public.user_entitlements'))
+  assert.ok(allSql.includes('create table if not exists public.resource_access_grants'))
+  assert.ok(allSql.includes('create or replace function public.search_visible_gear'))
+  assert.ok(allSql.includes('create or replace function public.search_visible_checklists'))
+  assert.ok(allSql.includes('create or replace function public.search_visible_storages'))
+  assert.ok(allSql.includes('access_source'))
+  assert.match(allSql, /on public\.resource_access_grants for select/)
+})
+
+test('database migrations add subscription entitlements and durable visibility controls', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  assert.ok(allSql.includes('create table if not exists public.subscription_plans'))
+  assert.ok(allSql.includes('create table if not exists public.user_subscriptions'))
+  assert.ok(allSql.includes('create or replace view public.user_entitlements'))
+  assert.ok(allSql.includes('create or replace function public.can_use_private_visibility(user_id uuid)'))
+
+  for (const entitlement of ['can_make_private', 'can_share_with_users']) {
+    assert.ok(allSql.includes(entitlement), `${entitlement} entitlement must be modeled`)
+  }
+
+  for (const table of ['storages', 'gear_items', 'checklists']) {
+    assert.ok(allSql.includes(`alter table if exists public.${table} add column if not exists visibility text not null default 'public'`))
+    assert.ok(allSql.includes(`alter table if exists public.${table} add column if not exists visibility_updated_at timestamptz`))
+    assert.ok(allSql.includes(`alter table if exists public.${table} add column if not exists published_at timestamptz`))
+    assert.match(allSql, new RegExp(`alter table if exists public\\.${table} add constraint ${table}_visibility_check check \\(visibility in \\('public', 'private', 'shared'\\)\\)`))
+  }
+
+  assert.ok(allSql.includes('create table if not exists public.resource_access_grants'))
+  assert.match(allSql, /resource_type text not null/)
+  assert.match(allSql, /constraint resource_access_grants_resource_type_check check \(resource_type in \('storage', 'gear_item', 'checklist'\)\)/)
+  assert.match(allSql, /constraint resource_access_grants_role_check check \(role = 'viewer'\)/)
+})
+
+test('database migrations add access functions, search RPCs, storage stats, and hardened RLS', () => {
+  const migrations = readMigrations()
+  const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
+
+  for (const functionName of [
+    'can_read_storage(storage_id uuid)',
+    'can_read_gear_item(item_id uuid)',
+    'can_read_checklist(checklist_id uuid)',
+    'can_update_resource_visibility(resource_type text, resource_id uuid, next_visibility text)',
+    'search_visible_gear(search_query text, result_limit int, result_offset int)',
+    'search_visible_checklists(search_query text, result_limit int, result_offset int)',
+    'search_visible_storages(search_query text, result_limit int, result_offset int)'
+  ]) {
+    assert.ok(allSql.includes(`create or replace function public.${functionName}`), `${functionName} must be created`)
+  }
+
+  assert.ok(allSql.includes('create or replace view public.storage_stats'))
+  assert.equal(allSql.includes('items_count'), false, 'storages must not persist manual item counts')
+
+  for (const table of ['storages', 'gear_items', 'checklists']) {
+    assert.match(allSql, new RegExp(`create policy ${table}_select_visible on public\\.${table} for select to anon, authenticated`))
+    assert.match(allSql, new RegExp(`create policy ${table}_insert_owner_with_entitlement on public\\.${table} for insert to authenticated`))
+    assert.match(allSql, new RegExp(`create policy ${table}_update_owner_with_entitlement on public\\.${table} for update to authenticated`))
+    assert.match(allSql, new RegExp(`create policy ${table}_delete_owner on public\\.${table} for delete to authenticated`))
+  }
+
+  assert.ok(allSql.includes("case when user_id = auth.uid() then 'mine' when visibility = 'public' then 'public' else 'shared_with_me' end as access_source"))
+  assert.ok(allSql.includes('bucket_id = \'gear-photos\''))
+  assert.ok(allSql.includes('public.can_read_gear_item'))
+})
+
+test('database migrations contain SQL access scenario checks', () => {
+  const migrations = readMigrations()
+  assert.equal(existsSync(visibilityChecksFile), true, 'visibility access SQL checks must exist')
+
+  const allSql = compact([
+    ...migrations.map(migration => migration.sql),
+    readFileSync(visibilityChecksFile, 'utf8')
+  ].join('\n'))
+
+  for (const scenario of [
+    'anon sees public',
+    'anon cannot see private or shared',
+    'other user sees public',
+    'grantee sees shared',
+    'free user cannot make private',
+    'subscriber can make private'
+  ]) {
+    assert.ok(allSql.includes(scenario), `missing SQL check scenario: ${scenario}`)
+  }
+})

@@ -53,13 +53,88 @@
   let editingId = null
   let currentPhotoData = null
   const MAX_IMAGE_SIZE = 1024 * 1024 // 1MB target limit
+  const photoUrlCache = window.PhotoUrlCache
+  const appHelpers = window.AppHelpers
+  const visibilityUI = window.VisibilityUI
+  let visibilityEntitlements = { canUsePrivateVisibility: false }
 
   // Storage management
   let storages = [] // Array of storage locations {id, name, created}
-  let currentStorageFilter = null // null = show all, or storage id to filter
+  let currentStorageFilters = [] // empty = show all, otherwise selected storage ids
+  let visibleSearchResults = null
+  let visibleSearchScope = 'mine'
+  let showEmptyGearCategories = false
   let currentChecklistStorageFilter = {} // {checklistId: storageId} - filters per checklist
   let checklistCategorySortState = {} // {checklistId: {category: {type: 'name', order: 'asc'}}} - sort state per checklist category
   let checklistCollapsedState = {} // {checklistId: boolean} - track which checklists are collapsed
+
+  function renderVisibilityBadges(resource) {
+    return visibilityUI ? visibilityUI.renderVisibilityBadge(resource || {}) : ''
+  }
+
+  function renderVisibilityPicker(containerId, resource = {}) {
+    const container = document.getElementById(containerId)
+    if (!container || !visibilityUI) return
+    visibilityUI.renderVisibilityPicker(container, {
+      value: resource.visibility || 'public',
+      entitlements: visibilityEntitlements,
+      grants: resource.grants || []
+    })
+  }
+
+  function getVisibilityValue(containerId) {
+    const container = document.getElementById(containerId)
+    return visibilityUI ? visibilityUI.getSelectedVisibility(container) : 'public'
+  }
+
+  function canEditResource(resource) {
+    const accessSource = resource?.accessSource || resource?.access_source
+    const ownerId = resource?.userId || resource?.user_id || resource?.owner_id
+    if (!accessSource && !ownerId) return true
+    if (visibilityUI?.canEditResource) return visibilityUI.canEditResource(resource)
+    return accessSource === 'mine'
+  }
+
+  function alertOwnerOnly(resourceType) {
+    alert(`Only your own ${resourceType} can be edited.`)
+  }
+
+  function normalizeStorageRating(value) {
+    return Math.max(0, Math.min(5, Number(value) || 0))
+  }
+
+  function renderStorageRatingStars(value) {
+    const rating = normalizeStorageRating(value)
+    return `<span class="storage-rating-display" title="Rating: ${rating}/5">${[1, 2, 3, 4, 5].map(star => `<span class="star${star <= rating ? ' active' : ''}">★</span>`).join('')}</span>`
+  }
+
+  function setStorageRatingValue(input, value) {
+    if (!input) return
+    const rating = normalizeStorageRating(value)
+    input.value = String(rating)
+    document.querySelectorAll(`.storage-rating-stars[data-rating-input="${input.id}"] .storage-rating-star`).forEach(star => {
+      const starValue = Number(star.dataset.ratingValue) || 0
+      star.classList.toggle('active', starValue <= rating)
+      star.setAttribute('aria-checked', starValue === rating ? 'true' : 'false')
+    })
+  }
+
+  function initializeStorageRatingStars() {
+    document.querySelectorAll('.storage-rating-stars').forEach(group => {
+      const input = document.getElementById(group.dataset.ratingInput)
+      group.querySelectorAll('.storage-rating-star').forEach(star => {
+        star.setAttribute('role', 'radio')
+        star.addEventListener('click', () => {
+          const selected = Number(star.dataset.ratingValue) || 0
+          const current = normalizeStorageRating(input?.value)
+          setStorageRatingValue(input, current === selected ? 0 : selected)
+        })
+      })
+      setStorageRatingValue(input, input?.value || 0)
+    })
+  }
+
+  initializeStorageRatingStars()
 
   // Immediately clean any legacy 'kitchen' entry from localStorage (persistent client-side state)
   let localStorageUpdated = false
@@ -69,34 +144,7 @@
     if (rawCat) {
       const arr = JSON.parse(rawCat)
       if (Array.isArray(arr)) {
-        let filtered = arr.filter(c => typeof c === 'string' && c.trim().toLowerCase() !== 'kitchen')
-
-        // Add "Photo/Video Gear" before "Ride Gear" if it doesn't exist
-        if (!filtered.includes('Photo/Video Gear')) {
-          const rideGearIndex = filtered.indexOf('Ride Gear')
-          if (rideGearIndex > -1) {
-            filtered.splice(rideGearIndex, 0, 'Photo/Video Gear')
-          } else {
-            const consumablesIndex = filtered.indexOf('Consumables')
-            if (consumablesIndex > -1) {
-              filtered.splice(consumablesIndex, 0, 'Photo/Video Gear')
-            } else {
-              filtered.push('Photo/Video Gear')
-            }
-          }
-          localStorageUpdated = true
-        }
-
-        // Add "Ride Gear" before "Consumables" if it doesn't exist
-        if (!filtered.includes('Ride Gear')) {
-          const consumablesIndex = filtered.indexOf('Consumables')
-          if (consumablesIndex > -1) {
-            filtered.splice(consumablesIndex, 0, 'Ride Gear')
-          } else {
-            filtered.push('Ride Gear')
-          }
-          localStorageUpdated = true
-        }
+        let filtered = appHelpers.normalizeCategoryOrder(arr)
 
         if (filtered.length !== arr.length || JSON.stringify(filtered) !== JSON.stringify(arr)) {
           localStorage.setItem('allmygear.categoryOrder', JSON.stringify(filtered))
@@ -412,13 +460,14 @@
     const section = document.getElementById('addToChecklistsSection')
     const container = document.getElementById('addToChecklistsContainer')
 
-    if(!checklists || checklists.length === 0) {
+    const editableChecklists = (checklists || []).filter(canEditResource)
+    if(editableChecklists.length === 0) {
       section.style.display = 'none'
       return
     }
 
     section.style.display = 'block'
-    container.innerHTML = checklists.map(cl => `
+    container.innerHTML = editableChecklists.map(cl => `
       <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
         <input type="checkbox" class="add-to-checklist-checkbox" data-checklist-id="${cl.id}" style="cursor:pointer;width:18px;height:18px;">
         <span style="font-size:13px;">${cl.name}</span>
@@ -734,10 +783,11 @@
     const searchWasFocused = searchInput && document.activeElement === searchInput
     const searchRawValue = searchInput ? searchInput.value : '' // Keep original case for restoring
     const cat = filterCategory.value
-    const stor = currentStorageFilter
-    const filtered = items.filter(it=>{
+    const selectedStorageIds = currentStorageFilters
+    const renderItems = visibleSearchResults || items
+    const filtered = renderItems.filter(it=>{
       if(cat && it.category !== cat) return false
-      if(stor && it.storageId !== stor) return false
+      if(!visibleSearchResults && !appHelpers.matchesStorageFilter(it.storageId, selectedStorageIds)) return false
       if(q){
         const matchName = it.name.toLowerCase().includes(q)
         const matchBrand = it.brand && it.brand.toLowerCase().includes(q)
@@ -765,9 +815,7 @@
     const grouped = {}
     const uncategorizedItems = []
     filtered.forEach(it=>{
-      const rawCat = (it.category || '').toString().trim()
-      // Normalize legacy 'kitchen' -> 'Cooking' to avoid old category name
-      const normalizedCat = rawCat && rawCat.toLowerCase() === 'kitchen' ? 'Cooking' : rawCat
+      const normalizedCat = appHelpers.normalizeGearCategory(it.category)
 
       if(!normalizedCat){
         uncategorizedItems.push(it)
@@ -813,6 +861,7 @@
                 <h3 title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</h3>
                 ${commentIconHtml}
                 ${storageBadgeHtml}
+                ${renderVisibilityBadges(it)}
                 <div class="weight-badge">${formatWeight(it.weight)}</div>
               </div>
               <div class="card-footer">
@@ -903,6 +952,7 @@
             <div class="right">
               <div class="actions">
                 ${storageBadgeHtml}
+                ${renderVisibilityBadges(it)}
                 <button class="btn icon share" data-action="share" data-id="${it.id}" aria-label="Share" title="Share item">
                   <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <circle cx="18" cy="5" r="3"/>
@@ -1005,9 +1055,13 @@
                 </div>
               </div>
               <div class="edit-section">
+                <label>Visibility</label>
+                <div class="inline-visibility-picker" data-item-id="${it.id}"></div>
+              </div>
+              <div class="edit-section">
                 <label>In Checklists</label>
                 <div class="edit-checklists-container" style="max-height:200px;overflow-y:auto;padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;">
-                  ${checklists.length === 0 ? '<p style="font-size:12px;color:#888;margin:0;">No checklists yet</p>' : checklists.map(cl => `
+                  ${checklists.filter(canEditResource).length === 0 ? '<p style="font-size:12px;color:#888;margin:0;">No editable checklists</p>' : checklists.filter(canEditResource).map(cl => `
                     <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
                       <input type="checkbox" class="edit-checklist-checkbox" data-checklist-id="${cl.id}" data-item-id="${it.id}" ${cl.items.find(i => i.itemId === it.id) ? 'checked' : ''} style="cursor:pointer;width:18px;height:18px;">
                       <span style="font-size:13px;">${escapeHtml(cl.name)}</span>
@@ -1049,8 +1103,9 @@
     // Render categories
     const categoryFragment = document.createDocumentFragment()
 
-    // Render each category section (including empty ones)
-    allCategories.forEach(catName=>{
+    // Render non-empty sections first; optional empty sections stay at the bottom.
+    const renderCategories = appHelpers.getRenderableGearCategories(allCategories, grouped, showEmptyGearCategories)
+    renderCategories.forEach(catName=>{
       const catItems = grouped[catName] || []
       const catCount = catItems.length
       // Use cached stats or compute if not cached
@@ -1117,7 +1172,7 @@
       // (drag handlers removed to simplify behavior and improve performance)
 
       // Set correct chevron rotation based on collapsed state
-      const shouldBeCollapsed = catCount === 0 || collapsedStates[catName]
+      const shouldBeCollapsed = appHelpers.shouldCollapseCategory(catCount, collapsedStates, catName)
       const chevron = catHeader.querySelector('.cat-chevron')
       if (chevron) {
         chevron.style.transform = shouldBeCollapsed ? 'rotate(180deg)' : 'rotate(0deg)'
@@ -1138,7 +1193,7 @@
 
       // Create items container
       const itemsContainer = document.createElement('div')
-      const isCollapsed = catCount === 0 || collapsedStates[catName]
+      const isCollapsed = appHelpers.shouldCollapseCategory(catCount, collapsedStates, catName)
       itemsContainer.className = isCollapsed ? 'category-items collapsed' : 'category-items'
       itemsContainer.dataset.category = catName
       itemsContainer.addEventListener('click', ()=> {}, true) // For event bubbling control
@@ -1190,6 +1245,7 @@
                 <h3 title=\"${escapeHtml(it.name)}\">${escapeHtml(it.name)}</h3>
                 ${commentIconHtml}
                 ${storageBadgeHtml}
+                ${renderVisibilityBadges(it)}
                 <div class=\"weight-badge\">${formatWeight(it.weight)}</div>
               </div>
               <div class=\"card-footer\">
@@ -1279,6 +1335,7 @@
             <div class=\"right\">
               <div class=\"actions\">
                 ${storageBadgeHtml}
+                ${renderVisibilityBadges(it)}
                 <button class=\"btn icon share\" data-action=\"share\" data-id=\"${it.id}\" aria-label=\"Share\" title=\"Share item\">
                   <svg viewBox=\"0 0 24 24\" xmlns=\"http://www.w3.org/2000/svg\" aria-hidden=\"true\">
                     <circle cx=\"18\" cy=\"5\" r=\"3\"/>
@@ -1381,9 +1438,13 @@
                 </div>
               </div>
               <div class=\"edit-section\">
+                <label>Visibility</label>
+                <div class=\"inline-visibility-picker\" data-item-id=\"${it.id}\"></div>
+              </div>
+              <div class=\"edit-section\">
                 <label>In Checklists</label>
                 <div class=\"edit-checklists-container\" style=\"max-height:200px;overflow-y:auto;padding:8px;background:rgba(255,255,255,0.05);border-radius:8px;\">
-                  ${checklists.length === 0 ? '<p style=\"font-size:12px;color:#888;margin:0;\">No checklists yet</p>' : checklists.map(cl => `
+                  ${checklists.filter(canEditResource).length === 0 ? '<p style=\"font-size:12px;color:#888;margin:0;\">No editable checklists</p>' : checklists.filter(canEditResource).map(cl => `
                     <label style=\"display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;\">
                       <input type=\"checkbox\" class=\"edit-checklist-checkbox\" data-checklist-id=\"${cl.id}\" data-item-id=\"${it.id}\" ${cl.items.find(i => i.itemId === it.id) ? 'checked' : ''} style=\"cursor:pointer;width:18px;height:18px;\">
                       <span style=\"font-size:13px;\">${escapeHtml(cl.name)}</span>
@@ -1426,7 +1487,8 @@
 
     // Insert category-order toolbar above the first category (single control)
     const _firstCategory = cardsEl.querySelector('.category-section')
-    if (_firstCategory) {
+    const _toolbarAnchor = _firstCategory || cardsEl.firstElementChild
+    {
       const toolbar = document.createElement('div')
       toolbar.className = 'category-order-toolbar'
       toolbar.innerHTML = `
@@ -1438,21 +1500,53 @@
           <input id="search" type="search" placeholder="Search gear...">
         </div>
         <div class="toolbar-storage-controls" style="display:${storages.length > 0 ? 'flex' : 'none'}">
-          <span class="toolbar-storage-label">My Storages</span>
-          <select id="toolbarStorageFilter" class="toolbar-storage-select">
-            <option value="">All storages</option>
-            ${storages.map(st => {
-              const selected = currentStorageFilter === st.id ? 'selected' : ''
-              return `<option value="${st.id}" ${selected}>${escapeHtml(st.name)}</option>`
-            }).join('')}
-          </select>
+          <span class="toolbar-storage-label">Storages</span>
+          <div class="toolbar-storage-filter" id="toolbarStorageFilter">
+            <button type="button" class="toolbar-storage-filter-toggle" aria-haspopup="true" aria-expanded="false">
+              <span>${escapeHtml(appHelpers.getStorageFilterLabel(currentStorageFilters, storages))}</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 10l5 5 5-5z"/>
+              </svg>
+            </button>
+            <div class="toolbar-storage-filter-menu">
+              <button type="button" class="toolbar-storage-clear" data-action="clear-storage-filter">All storages</button>
+              ${storages.map(st => {
+                const checked = currentStorageFilters.includes(st.id) ? 'checked' : ''
+                return `
+                  <label class="toolbar-storage-option">
+                    <input type="checkbox" value="${escapeHtml(st.id)}" ${checked}>
+                    <span>${escapeHtml(st.name)}</span>
+                  </label>
+                `
+              }).join('')}
+            </div>
+          </div>
           <button class="toolbar-storage-btn" id="toolbarManageStorages" title="Manage storages">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
             </svg>
           </button>
         </div>
+        <div class="toolbar-storage-controls">
+          <span class="toolbar-storage-label">Visibility</span>
+          <select id="visibleSearchScope" class="toolbar-storage-select">
+            <option value="mine" ${visibleSearchScope === 'mine' ? 'selected' : ''}>Mine</option>
+            <option value="all_visible" ${visibleSearchScope === 'all_visible' ? 'selected' : ''}>All visible</option>
+            <option value="public" ${visibleSearchScope === 'public' ? 'selected' : ''}>Public</option>
+            <option value="shared" ${visibleSearchScope === 'shared' ? 'selected' : ''}>Shared with me</option>
+          </select>
+          <button class="toolbar-storage-btn" id="refreshVisibleSearch" title="Refresh visible search" aria-label="Refresh visible search">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M20 6v5h-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M19 11a7 7 0 1 0-2.05 4.95" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
         <div class="category-order-toolbar-inner">
+          <label class="toolbar-checkbox-control show-empty-control">
+            <input id="showEmptyGearCategories" type="checkbox" ${showEmptyGearCategories ? 'checked' : ''}>
+            <span>Show Empty</span>
+          </label>
           <button class="category-edit-order-btn" title="Edit category order" aria-label="Edit category order">
             <svg width="18" height="12" viewBox="0 0 18 12" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <path d="M2 2h14M2 6h14M2 10h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
@@ -1464,7 +1558,7 @@
             </svg>
           </button>
         </div>`
-      cardsEl.insertBefore(toolbar, _firstCategory)
+      cardsEl.insertBefore(toolbar, _toolbarAnchor)
 
       // Setup search functionality
       const searchInput = toolbar.querySelector('#search')
@@ -1490,11 +1584,38 @@
         })
       }
 
+      const showEmptyCheckbox = toolbar.querySelector('#showEmptyGearCategories')
+      if (showEmptyCheckbox) {
+        showEmptyCheckbox.addEventListener('change', (e) => {
+          showEmptyGearCategories = e.target.checked
+          render()
+        })
+      }
+
       // Setup toolbar storage controls
       const toolbarStorageFilter = toolbar.querySelector('#toolbarStorageFilter')
       if (toolbarStorageFilter) {
-        toolbarStorageFilter.addEventListener('change', (e) => {
-          currentStorageFilter = e.target.value || null
+        const toggle = toolbarStorageFilter.querySelector('.toolbar-storage-filter-toggle')
+        const menu = toolbarStorageFilter.querySelector('.toolbar-storage-filter-menu')
+        toggle?.addEventListener('click', (e) => {
+          e.stopPropagation()
+          const isOpen = toolbarStorageFilter.classList.toggle('open')
+          toggle.setAttribute('aria-expanded', String(isOpen))
+        })
+        menu?.addEventListener('click', (e) => {
+          e.stopPropagation()
+        })
+        menu?.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+          checkbox.addEventListener('change', () => {
+            currentStorageFilters = Array.from(menu.querySelectorAll('input[type="checkbox"]:checked'))
+              .map(input => input.value)
+              .filter(Boolean)
+            render()
+          })
+        })
+        const clearStorageFilter = menu?.querySelector('[data-action="clear-storage-filter"]')
+        clearStorageFilter?.addEventListener('click', () => {
+          currentStorageFilters = []
           render()
         })
       }
@@ -1502,6 +1623,34 @@
       const toolbarManageStorages = toolbar.querySelector('#toolbarManageStorages')
       if (toolbarManageStorages) {
         toolbarManageStorages.addEventListener('click', openManageStoragesModal)
+      }
+
+      const visibleScopeSelect = toolbar.querySelector('#visibleSearchScope')
+      const refreshVisibleSearch = toolbar.querySelector('#refreshVisibleSearch')
+      const runVisibleSearch = async () => {
+        visibleSearchScope = visibleScopeSelect?.value || 'mine'
+        if (visibleSearchScope === 'mine') {
+          visibleSearchResults = null
+          render()
+          return
+        }
+
+        try {
+          visibleSearchResults = await SupabaseService.searchVisibleGear(searchInput?.value || '', {
+            scope: visibleSearchScope,
+            limit: 50
+          })
+          render()
+        } catch (err) {
+          console.error('Visible gear search failed:', err)
+          alert('Visible search failed: ' + err.message)
+        }
+      }
+      if (visibleScopeSelect) {
+        visibleScopeSelect.addEventListener('change', runVisibleSearch)
+      }
+      if (refreshVisibleSearch) {
+        refreshVisibleSearch.addEventListener('click', runVisibleSearch)
       }
 
       const btn = toolbar.querySelector('.category-edit-order-btn')
@@ -1532,13 +1681,22 @@
       if(toggleAllBtn) toggleAllBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleAllCategories() })
     }
 
+    document.querySelectorAll('.card[data-id]').forEach(card => {
+      const item = renderItems.find(it => it.id === card.dataset.id)
+      if (item && !canEditResource(item)) {
+        card.querySelectorAll('[data-action="edit"], [data-action="delete"], [data-action="add-photo"], [data-action="replace-photo"], [data-action="remove-photo"], .delete-edit, .photo-action-btn').forEach(el => el.remove())
+        const editForm = card.querySelector('.card-edit-form')
+        if (editForm) editForm.remove()
+      }
+    })
+
     // Create datalists for inline editing
     createInlineDataLists()
 
     // stats
-    const totalCount = items.length
-    const totalWeight = items.reduce((s,i)=>s + (Number(i.weight)||0),0)
-    const totalPrice = items.reduce((s,i)=>s + (Number(i.price)||0),0)
+    const totalCount = renderItems.length
+    const totalWeight = renderItems.reduce((s,i)=>s + (Number(i.weight)||0),0)
+    const totalPrice = renderItems.reduce((s,i)=>s + (Number(i.price)||0),0)
     countEl.textContent = totalCount
     if(totalWeightEl) totalWeightEl.textContent = formatWeight(totalWeight)
     totalPriceEl.textContent = Number(totalPrice).toLocaleString('en-US', {maximumFractionDigits:2})
@@ -1624,6 +1782,9 @@
 
   async function createNewStorage() {
     const storageNameInput = document.getElementById('storageNameInput')
+    const storageAddressInput = document.getElementById('storageAddressInput')
+    const storageDescriptionInput = document.getElementById('storageDescriptionInput')
+    const storageRatingInput = document.getElementById('storageRatingInput')
     const name = storageNameInput.value.trim()
 
     if (!name) {
@@ -1632,7 +1793,13 @@
     }
 
     try {
-      const newStorage = await SupabaseService.createStorage(name)
+      const newStorage = await SupabaseService.createStorage({
+        name,
+        address: storageAddressInput?.value.trim() || '',
+        description: storageDescriptionInput?.value.trim() || '',
+        rating: storageRatingInput?.value ? Number(storageRatingInput.value) : 0,
+        visibility: 'public'
+      })
       storages.push(newStorage)
       storages.sort((a, b) => a.name.localeCompare(b.name))
       populateStorageDropdown()
@@ -1641,6 +1808,9 @@
       if (storageSelect) {
         storageSelect.value = newStorage.id
       }
+      if (storageAddressInput) storageAddressInput.value = ''
+      if (storageDescriptionInput) storageDescriptionInput.value = ''
+      if (storageRatingInput) storageRatingInput.value = '0'
 
       // Close modal
       const createModal = document.getElementById('createStorageModal')
@@ -1669,15 +1839,17 @@
     } else {
       storages.forEach(storage => {
         const itemCount = items.filter(it => it.storageId === storage.id).length
+        const canEditStorage = canEditResource(storage)
 
         const storageItem = document.createElement('div')
         storageItem.className = 'storage-item'
         storageItem.innerHTML = `
           <div class="storage-item-info">
-            <div class="storage-item-name">${escapeHtml(storage.name)}</div>
-            <div class="storage-item-count">${itemCount} item${itemCount !== 1 ? 's' : ''}</div>
+            <div class="storage-item-name">${escapeHtml(storage.name)} ${renderVisibilityBadges(storage)}</div>
+            <div class="storage-item-count">${itemCount} item${itemCount !== 1 ? 's' : ''}${storage.address ? ` · ${escapeHtml(storage.address)}` : ''} · ${renderStorageRatingStars(storage.rating)}</div>
+            ${storage.description ? `<div class="storage-item-count">${escapeHtml(storage.description)}</div>` : ''}
           </div>
-          <div class="storage-item-actions">
+          ${canEditStorage ? `<div class="storage-item-actions">
             <button class="btn icon edit-storage" data-id="${storage.id}" title="Edit">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
@@ -1688,7 +1860,7 @@
                 <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
               </svg>
             </button>
-          </div>
+          </div>` : ''}
         `
         storagesList.appendChild(storageItem)
       })
@@ -1702,6 +1874,10 @@
   async function editStorage(storageId) {
     const storage = storages.find(s => s.id === storageId)
     if (!storage) return
+    if (!canEditResource(storage)) {
+      alertOwnerOnly('storage locations')
+      return
+    }
 
     // Store storage info for editing
     storageToEdit = storageId
@@ -1709,22 +1885,31 @@
     // Update modal content
     const editModal = document.getElementById('editStorageNameModal')
     const titleEl = document.getElementById('editStorageNameTitle')
-    const inputEl = document.getElementById('editStorageNameInput')
+    const nameInputEl = document.getElementById('editStorageNameInput')
+    const addressInputEl = document.getElementById('editStorageAddressInput')
+    const descriptionInputEl = document.getElementById('editStorageDescriptionInput')
+    const ratingInputEl = document.getElementById('editStorageRatingInput')
 
-    titleEl.textContent = `Rename "${storage.name}"`
-    inputEl.value = storage.name
+    titleEl.textContent = `Edit "${storage.name}"`
+    nameInputEl.value = storage.name || ''
+    if (addressInputEl) addressInputEl.value = storage.address || ''
+    if (descriptionInputEl) descriptionInputEl.value = storage.description || ''
+    setStorageRatingValue(ratingInputEl, storage.rating || 0)
 
     // Show modal
     editModal.classList.remove('hidden')
     setTimeout(() => {
-      inputEl.focus()
-      inputEl.select()
+      nameInputEl.focus()
+      nameInputEl.select()
     }, 100)
   }
 
   // Initialize edit storage name modal
   const editStorageNameModal = document.getElementById('editStorageNameModal')
   const editStorageNameInput = document.getElementById('editStorageNameInput')
+  const editStorageAddressInput = document.getElementById('editStorageAddressInput')
+  const editStorageDescriptionInput = document.getElementById('editStorageDescriptionInput')
+  const editStorageRatingInput = document.getElementById('editStorageRatingInput')
   const confirmEditStorageNameBtn = document.getElementById('confirmEditStorageName')
   const cancelEditStorageNameBtn = document.getElementById('cancelEditStorageName')
 
@@ -1732,11 +1917,17 @@
     confirmEditStorageNameBtn.addEventListener('click', async () => {
       if (!storageToEdit) return
 
-      const newName = editStorageNameInput.value.trim()
-      if (!newName) return
+      const updates = {
+        name: editStorageNameInput.value.trim(),
+        address: editStorageAddressInput?.value.trim() || '',
+        description: editStorageDescriptionInput?.value.trim() || '',
+        rating: editStorageRatingInput?.value ? Number(editStorageRatingInput.value) : 0
+      }
+
+      if (!updates.name) return
 
       const storage = storages.find(s => s.id === storageToEdit)
-      if (!storage || newName === storage.name) {
+      if (!storage) {
         editStorageNameModal.classList.add('hidden')
         storageToEdit = null
         return
@@ -1749,8 +1940,8 @@
         confirmEditStorageNameBtn.disabled = true
         confirmEditStorageNameBtn.textContent = 'Saving...'
 
-        await SupabaseService.updateStorage(storageId, newName)
-        storage.name = newName
+        const updatedStorage = await SupabaseService.updateStorage(storageId, updates)
+        Object.assign(storage, updatedStorage)
         storages.sort((a, b) => a.name.localeCompare(b.name))
         populateStorageDropdown()
         openManageStoragesModal()
@@ -1799,6 +1990,10 @@
   async function deleteStorage(storageId) {
     const storage = storages.find(s => s.id === storageId)
     if (!storage) return
+    if (!canEditResource(storage)) {
+      alertOwnerOnly('storage locations')
+      return
+    }
 
     const itemCount = items.filter(it => it.storageId === storageId).length
 
@@ -1853,10 +2048,8 @@
           }
         })
 
-        // Clear filter if it was set to deleted storage
-        if (currentStorageFilter === storageId) {
-          currentStorageFilter = null
-        }
+        // Remove deleted storage from the toolbar filters
+        currentStorageFilters = currentStorageFilters.filter(id => id !== storageId)
 
         // Clear checklist filters
         Object.keys(currentChecklistStorageFilter).forEach(checklistId => {
@@ -1979,6 +2172,7 @@
       year: year.value ? Number(year.value) : null,
       rating: ratingInput ? Number(ratingInput.value) : 0,
       storageId: storageSelect.value || null,
+      visibility: getVisibilityValue('gearVisibilityPicker'),
       comment: comment.value.trim() || '',
       image: currentPhotoData || null
     }
@@ -2081,7 +2275,7 @@
 
         selectedChecklistIds.forEach(checklistId => {
           const checklist = checklists.find(cl => cl.id === checklistId)
-          if(checklist) {
+          if(checklist && canEditResource(checklist)) {
             // Add item if not already in checklist
             if(!checklist.items.find(it => it.itemId === itemId)) {
               checklist.items.push({itemId, checked: false})
@@ -2093,7 +2287,7 @@
         if (SupabaseService.getCurrentUser()) {
           for(const checklistId of selectedChecklistIds) {
             const checklist = checklists.find(cl => cl.id === checklistId)
-            if(checklist) {
+            if(checklist && canEditResource(checklist)) {
               try {
                 await SupabaseService.updateChecklist(checklistId, checklist)
               } catch(err) {
@@ -2427,11 +2621,24 @@
     } else if(action==='edit'){
       const card = e.target.closest('.card')
       if(!card) return
+      const item = items.find(i => i.id === id)
+      if (item && !canEditResource(item)) {
+        alertOwnerOnly('gear items')
+        return
+      }
       const editForm = card.querySelector('.card-edit-form')
       if(editForm){
         editForm.classList.remove('hidden')
         card.classList.add('expanded')
         card.classList.add('editing')
+        const picker = editForm.querySelector('.inline-visibility-picker')
+        if (picker && visibilityUI) {
+          visibilityUI.renderVisibilityPicker(picker, {
+            value: item?.visibility || 'public',
+            entitlements: visibilityEntitlements,
+            grants: item?.grants || []
+          })
+        }
       }
     }
   })
@@ -2441,6 +2648,12 @@
     if(e.target.matches('[data-field="photo"]')){
       const input = e.target
       const id = input.dataset.id
+      const item = items.find(i => i.id === id)
+      if (item && !canEditResource(item)) {
+        input.value = ''
+        alertOwnerOnly('gear items')
+        return
+      }
       const card = input.closest('.card')
       const message = card.querySelector(`.edit-photo-message[data-id="${id}"], .photo-message[data-id="${id}"]`)
       const f = input.files && input.files[0]
@@ -2532,6 +2745,11 @@
       const btn = e.target.closest('.photo-overlay-btn')
       const action = btn.dataset.action
       const id = btn.dataset.id
+      const item = items.find(i => i.id === id)
+      if (item && !canEditResource(item)) {
+        alertOwnerOnly('gear items')
+        return
+      }
       const fileInput = document.querySelector(`.photo-file-input[data-id="${id}"]`)
 
       if(action === 'add-photo' || action === 'replace-photo'){
@@ -2556,6 +2774,11 @@
       e.stopPropagation()
       const btn = e.target.closest('.photo-action-btn')
       const id = btn.dataset.id
+      const item = items.find(i => i.id === id)
+      if (item && !canEditResource(item)) {
+        alertOwnerOnly('gear items')
+        return
+      }
       const fileInput = document.querySelector(`.photo-file-input[data-id="${id}"]`)
 
       if(btn.classList.contains('add-photo') || btn.classList.contains('replace-photo')){
@@ -2579,6 +2802,11 @@
     if(e.target.closest('.save-edit')){
       const btn = e.target.closest('.save-edit')
       const id = btn.dataset.id
+      const item = items.find(i => i.id === id)
+      if (item && !canEditResource(item)) {
+        alertOwnerOnly('gear items')
+        return
+      }
       const card = btn.closest('.card')
       const form = card.querySelector('.card-edit-form')
 
@@ -2608,6 +2836,11 @@
         // Handle comment update
         const commentField = form.querySelector('[data-field="comment"]')
         items[itemIdx].comment = commentField ? commentField.value.trim() : ''
+
+        const visibilityPicker = form.querySelector('.inline-visibility-picker')
+        if (visibilityPicker && visibilityUI) {
+          items[itemIdx].visibility = visibilityUI.getSelectedVisibility(visibilityPicker)
+        }
 
         // Handle rating update
         const ratingInput = card.querySelector(`input[name="rating-${id}"]:checked`)
@@ -2702,6 +2935,11 @@
     } else if(e.target.closest('.delete-edit')){
       const btn = e.target.closest('.delete-edit')
       const id = btn.dataset.id
+      const item = items.find(i => i.id === id)
+      if (item && !canEditResource(item)) {
+        alertOwnerOnly('gear items')
+        return
+      }
 
       if (!SupabaseService.getCurrentUser()) {
         alert('Please sign in to delete items')
@@ -3286,6 +3524,7 @@
 
     updateCategorySelect()
     populateStorageDropdown()
+    renderVisibilityPicker('gearVisibilityPicker', { visibility: 'public' })
     setupAutocomplete()
     renderAddToChecklistsSection()
   })
@@ -3328,6 +3567,9 @@
   // Add storage in manage modal
   const addStorageInManageBtn = document.getElementById('addStorageInManage')
   const newStorageNameInManage = document.getElementById('newStorageNameInManage')
+  const newStorageAddressInManage = document.getElementById('newStorageAddressInManage')
+  const newStorageDescriptionInManage = document.getElementById('newStorageDescriptionInManage')
+  const newStorageRatingInManage = document.getElementById('newStorageRatingInManage')
 
   if (addStorageInManageBtn && newStorageNameInManage) {
     addStorageInManageBtn.addEventListener('click', async () => {
@@ -3341,7 +3583,13 @@
         addStorageInManageBtn.disabled = true
         addStorageInManageBtn.textContent = 'Creating...'
 
-        const newStorage = await SupabaseService.createStorage(storageName)
+        const newStorage = await SupabaseService.createStorage({
+          name: storageName,
+          address: newStorageAddressInManage?.value.trim() || '',
+          description: newStorageDescriptionInManage?.value.trim() || '',
+          rating: newStorageRatingInManage?.value ? Number(newStorageRatingInManage.value) : 0,
+          visibility: 'public'
+        })
         storages.push(newStorage)
 
         // Refresh storage list
@@ -3350,6 +3598,9 @@
 
         // Clear input
         newStorageNameInManage.value = ''
+        if (newStorageAddressInManage) newStorageAddressInManage.value = ''
+        if (newStorageDescriptionInManage) newStorageDescriptionInManage.value = ''
+        setStorageRatingValue(newStorageRatingInManage, 0)
 
         addStorageInManageBtn.disabled = false
         addStorageInManageBtn.innerHTML = `
@@ -3987,6 +4238,7 @@
 
       const checklistHeader = document.createElement('div')
       checklistHeader.className = 'checklist-header' + (totalCount > 0 && checkedCount === totalCount ? ' complete' : '')
+      const canEditChecklist = canEditResource(checklist)
 
       const tagsHtml = checklist.tags && checklist.tags.length > 0
         ? `<div class="checklist-tags">${checklist.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>`
@@ -4011,6 +4263,7 @@
             <div class="checklist-title-row">
               <div class="checklist-title-with-activities">
                 <span class="cat-title">${escapeHtml(checklist.name)}</span>
+                ${renderVisibilityBadges(checklist)}
                 ${datesAndTagsHtml}
               </div>
               <svg class="cat-chevron" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -4035,18 +4288,20 @@
                 }).join('')}
               </select>
             ` : ''}
-            ${checkedCount === totalCount && totalCount > 0 ? `
+            ${canEditChecklist && checkedCount === totalCount && totalCount > 0 ? `
               <button class="btn icon clear-all" data-action="clear-all-checks" data-id="${checklist.id}" title="Uncheck all items">
                 <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                 </svg>
               </button>
             ` : ''}
+            ${canEditChecklist ? `
             <button class="btn icon" data-action="edit-checklist" data-id="${checklist.id}" title="Edit checklist">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
               </svg>
             </button>
+            ` : ''}
             <button class="btn icon" data-action="share-checklist" data-id="${checklist.id}" title="Share checklist">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
@@ -4057,11 +4312,13 @@
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
               </svg>
             </button>
+            ${canEditChecklist ? `
             <button class="btn icon delete" data-action="delete-checklist" data-id="${checklist.id}" title="Delete checklist">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
               </svg>
             </button>
+            ` : ''}
             <span class="stat">${checkedCount}/${totalCount}</span>
             <span class="stat">${formatWeight(totalWeight)}</span>
           </div>
@@ -4070,8 +4327,7 @@
 
       // Container for categories within this checklist
       const checklistContent = document.createElement('div')
-      // Apply collapsed state immediately if it was previously collapsed
-      const isCollapsed = checklistCollapsedState[checklist.id] === true
+      const isCollapsed = appHelpers.shouldCollapseChecklist(checklistCollapsedState, checklist.id)
       checklistContent.className = 'checklist-content' + (isCollapsed ? ' collapsed' : '')
 
       if(checklistItems.length === 0){
@@ -4092,7 +4348,7 @@
         // Render uncategorized items first
         uncategorizedItems.forEach(it => {
           const checklistItem = checklist.items.find(ci => ci.itemId === it.id)
-          const el = createChecklistCard(it, checklistItem)
+          const el = createChecklistCard(it, checklistItem, canEditChecklist)
           checklistContent.appendChild(el)
         })
 
@@ -4202,7 +4458,7 @@
 
           sortedCatItems.forEach(it => {
             const checklistItem = checklist.items.find(ci => ci.itemId === it.id)
-            const el = createChecklistCard(it, checklistItem)
+            const el = createChecklistCard(it, checklistItem, canEditChecklist)
             itemsContainer.appendChild(el)
           })
 
@@ -4233,7 +4489,7 @@
     })
   }
 
-  function createChecklistCard(item, checklistItem){
+  function createChecklistCard(item, checklistItem, canEditChecklist = true){
     const el = document.createElement('article')
     el.className = 'card checklist-card' + (checklistItem && checklistItem.checked ? ' checked' : '')
     el.dataset.id = item.id
@@ -4261,12 +4517,14 @@
         ${storageBadgeHtml}
         <div class="weight-badge">${formatWeight(item.weight)}</div>
         <div class="card-checkbox-right">
+          ${canEditChecklist ? `
           <button class="btn icon remove-from-checklist" data-item-id="${item.id}" title="Remove from checklist">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;">
               <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
             </svg>
           </button>
-          <input type="checkbox" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}">
+          ` : ''}
+          <input type="checkbox" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}" ${canEditChecklist ? '' : 'disabled'}>
         </div>
       </div>
       <div class="card-expanded-content">
@@ -4301,12 +4559,14 @@
           </div>
         </div>
         <div class="card-checkbox-right expanded-checkbox">
+          ${canEditChecklist ? `
           <button class="btn icon remove-from-checklist" data-item-id="${item.id}" title="Remove from checklist">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:16px;height:16px;">
               <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
             </svg>
           </button>
-          <input type="checkbox" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}">
+          ` : ''}
+          <input type="checkbox" ${checklistItem && checklistItem.checked ? 'checked' : ''} data-item-id="${item.id}" ${canEditChecklist ? '' : 'disabled'}>
         </div>
       </div>
     `
@@ -4444,7 +4704,7 @@
 
       // Update checklist items order
       const checklist = checklists.find(c => c.id === checklistId)
-      if (checklist) {
+      if (checklist && canEditResource(checklist)) {
         const sortedItemIds = cards.map(card => card.dataset.id)
         const categoryChecklistItems = checklist.items.filter(ci => {
           const item = items.find(it => it.id === ci.itemId)
@@ -4500,6 +4760,11 @@
       if(checklistId){
         const checklist = checklists.find(c => c.id === checklistId)
         if(checklist){
+          if (!canEditResource(checklist)) {
+            e.target.checked = !checked
+            alertOwnerOnly('checklists')
+            return
+          }
           const item = checklist.items.find(i => i.itemId === itemId)
           if(item){
             item.checked = checked
@@ -4744,7 +5009,7 @@
 
       // Update checklist items order
       const checklist = checklists.find(c => c.id === checklistId)
-      if (checklist) {
+      if (checklist && canEditResource(checklist)) {
         const sortedItemIds = cards.map(card => card.dataset.id)
         const categoryChecklistItems = checklist.items.filter(ci => {
           const item = items.find(it => it.id === ci.itemId)
@@ -4816,6 +5081,10 @@
 
       const checklist = checklists.find(c => c.id === checklistId)
       if(checklist) {
+        if (!canEditResource(checklist)) {
+          alertOwnerOnly('checklists')
+          return
+        }
         checklist.items = checklist.items.filter(item => item.itemId !== itemId)
 
         // Update checklist in Supabase
@@ -4880,6 +5149,10 @@
       const cl = checklists.find(c => c.id === id)
 
       if(cl){
+        if (!canEditResource(cl)) {
+          alertOwnerOnly('checklists')
+          return
+        }
         editingChecklistId = id
         if(checklistModalTitle) checklistModalTitle.textContent = 'Edit Checklist'
         const subtitle = document.querySelector('.modal-subtitle')
@@ -4898,6 +5171,7 @@
 
         renderCategoryCheckboxes(selectedCategories)
         renderGearItems(selectedCategories, itemIds)
+        renderVisibilityPicker('checklistVisibilityPicker', cl)
 
         if(checklistModal) checklistModal.classList.remove('hidden')
       }
@@ -4926,6 +5200,11 @@
       }
 
       const id = btn.dataset.id
+      const checklist = checklists.find(c => c.id === id)
+      if (checklist && !canEditResource(checklist)) {
+        alertOwnerOnly('checklists')
+        return
+      }
       showConfirm('Delete checklist?', 'This action cannot be undone.', async () => {
         try {
           await SupabaseService.deleteChecklist(id)
@@ -4947,12 +5226,22 @@
 
     if(action === 'add-items-to-checklist'){
       const id = btn.dataset.id
+      const checklist = checklists.find(c => c.id === id)
+      if (checklist && !canEditResource(checklist)) {
+        alertOwnerOnly('checklists')
+        return
+      }
       showItemSelector(id, 'add')
       return
     }
 
     if(action === 'remove-items-from-checklist'){
       const id = btn.dataset.id
+      const checklist = checklists.find(c => c.id === id)
+      if (checklist && !canEditResource(checklist)) {
+        alertOwnerOnly('checklists')
+        return
+      }
       showItemSelector(id, 'remove')
       return
     }
@@ -4961,6 +5250,10 @@
       const id = btn.dataset.id
       const checklist = checklists.find(c => c.id === id)
       if(checklist){
+        if (!canEditResource(checklist)) {
+          alertOwnerOnly('checklists')
+          return
+        }
         checklist.items.forEach(it => it.checked = false)
 
         // Update checklist in Supabase
@@ -5239,6 +5532,7 @@
     renderTags()
     renderCategoryCheckboxes()
     renderGearItems([], [])
+    renderVisibilityPicker('checklistVisibilityPicker', { visibility: 'public' })
     if(checklistModal) checklistModal.classList.remove('hidden')
   })
 
@@ -5259,7 +5553,8 @@
       name: checklistNameInput.value.trim(),
       tags: [...currentTags],
       startDate: checklistStartDateInput?.value || null,
-      endDate: checklistEndDateInput?.value || null
+      endDate: checklistEndDateInput?.value || null,
+      visibility: getVisibilityValue('checklistVisibilityPicker')
     }
 
     if(!data.name) return
@@ -5267,6 +5562,10 @@
     if(editingChecklistId){
       const idx = checklists.findIndex(c => c.id === editingChecklistId)
       if(idx !== -1){
+        if (!canEditResource(checklists[idx])) {
+          alertOwnerOnly('checklists')
+          return
+        }
         // Update basic data and items
         checklists[idx] = {
           ...checklists[idx],
@@ -5374,6 +5673,10 @@
   function showItemSelector(checklistId, mode){
     const checklist = checklists.find(c => c.id === checklistId)
     if(!checklist) return
+    if (!canEditResource(checklist)) {
+      alertOwnerOnly('checklists')
+      return
+    }
 
     const existingIds = checklist.items.map(it => it.itemId)
     const modalTitle = mode === 'add' ? 'Add Items to Checklist' : 'Remove Items from Checklist'
@@ -5543,6 +5846,8 @@
   const authForm = document.getElementById('authForm')
   const authEmail = document.getElementById('authEmail')
   const authPassword = document.getElementById('authPassword')
+  const authPasswordToggle = document.getElementById('authPasswordToggle')
+  const authRememberCredentials = document.getElementById('authRememberCredentials')
   const authNickname = document.getElementById('authNickname')
   const nicknameSection = document.getElementById('nicknameSection')
   const authSubmitBtn = document.getElementById('authSubmitBtn')
@@ -5576,6 +5881,59 @@
 
   let isSignUpMode = false
   let currentAvatarData = null
+  const AUTH_CREDENTIALS_STORAGE_KEY = 'allmygear.authCredentials'
+
+  function setAuthPasswordVisible(isVisible) {
+    authPassword.type = isVisible ? 'text' : 'password'
+    authPasswordToggle.classList.toggle('is-visible', isVisible)
+    authPasswordToggle.setAttribute('aria-label', isVisible ? 'Hide password' : 'Show password')
+    authPasswordToggle.setAttribute('aria-pressed', String(isVisible))
+    authPasswordToggle.title = isVisible ? 'Hide password' : 'Show password'
+  }
+
+  function getSavedAuthCredentials() {
+    try {
+      const rawCredentials = localStorage.getItem(AUTH_CREDENTIALS_STORAGE_KEY)
+      if (!rawCredentials) return null
+
+      const credentials = JSON.parse(rawCredentials)
+      if (!credentials || typeof credentials.email !== 'string' || typeof credentials.password !== 'string') {
+        localStorage.removeItem(AUTH_CREDENTIALS_STORAGE_KEY)
+        return null
+      }
+
+      return credentials
+    } catch (err) {
+      console.warn('Could not read saved auth credentials:', err)
+      localStorage.removeItem(AUTH_CREDENTIALS_STORAGE_KEY)
+      return null
+    }
+  }
+
+  function applySavedAuthCredentials() {
+    const credentials = getSavedAuthCredentials()
+    if (!credentials) {
+      authRememberCredentials.checked = false
+      return
+    }
+
+    authEmail.value = credentials.email
+    authPassword.value = credentials.password
+    authRememberCredentials.checked = true
+  }
+
+  function persistAuthCredentials(email, password) {
+    try {
+      if (!authRememberCredentials.checked) {
+        localStorage.removeItem(AUTH_CREDENTIALS_STORAGE_KEY)
+        return
+      }
+
+      localStorage.setItem(AUTH_CREDENTIALS_STORAGE_KEY, JSON.stringify({ email, password }))
+    } catch (err) {
+      console.warn('Could not persist auth credentials:', err)
+    }
+  }
 
   // Check authentication state on load
   async function initAuth() {
@@ -5599,6 +5957,8 @@
     // Reset to Sign In mode when opening
     isSignUpMode = false
     updateAuthToggle()
+    applySavedAuthCredentials()
+    setAuthPasswordVisible(false)
     authModal.classList.remove('hidden')
     authContent.style.display = 'block'
     authLoading.style.display = 'none'
@@ -5684,6 +6044,18 @@
       checklists = []
       categoryOrder = []
 
+      try {
+        if (typeof SupabaseService.getCurrentUserEntitlements !== 'function') {
+          visibilityEntitlements = { canUsePrivateVisibility: false }
+          console.warn('Visibility entitlements API is unavailable; using free visibility defaults')
+        } else {
+        visibilityEntitlements = await SupabaseService.getCurrentUserEntitlements()
+        }
+      } catch (err) {
+        console.warn('Error loading visibility entitlements:', err)
+        visibilityEntitlements = { canUsePrivateVisibility: false }
+      }
+
       // Load gear items
       const supabaseItems = await SupabaseService.getAllGearItems()
 
@@ -5700,6 +6072,11 @@
         // Cache valid for 50 minutes (Supabase URLs expire in 1 hour)
         if (cached && cacheTime && (now - parseInt(cacheTime)) < 50 * 60 * 1000) {
           photoUrls = JSON.parse(cached)
+          const cacheablePhotoUrls = photoUrlCache.getCacheablePhotoUrls(photoUrls, Object.keys(photoUrls))
+          if (Object.keys(cacheablePhotoUrls).length !== Object.keys(photoUrls).length) {
+            photoUrls = cacheablePhotoUrls
+            needsRefresh = true
+          }
         } else {
           needsRefresh = true
         }
@@ -5728,7 +6105,8 @@
 
         // Save to cache with error handling
         try {
-          localStorage.setItem(cacheKey, JSON.stringify(photoUrls))
+          const cacheablePhotoUrls = photoUrlCache.getCacheablePhotoUrls(photoUrls, imagePaths)
+          localStorage.setItem(cacheKey, JSON.stringify(cacheablePhotoUrls))
           localStorage.setItem(cacheTimeKey, Date.now().toString())
         } catch (e) {
           if (e.name === 'QuotaExceededError') {
@@ -5759,6 +6137,9 @@
         image: item.image_path ? (photoUrls[item.image_path] || null) : null,
         image_path: item.image_path,
         storageId: item.storage_id !== undefined ? item.storage_id : null,
+        visibility: item.visibility || 'public',
+        publishedAt: item.published_at || item.publishedAt || null,
+        accessSource: item.access_source || item.accessSource || 'mine',
         created: item.created_at
       }))
 
@@ -5817,6 +6198,9 @@
         tags: cl.activities || [],
         startDate: cl.start_date || null,
         endDate: cl.end_date || null,
+        visibility: cl.visibility || 'public',
+        publishedAt: cl.published_at || cl.publishedAt || null,
+        accessSource: cl.access_source || cl.accessSource || 'mine',
         items: (cl.items || []).map(item => ({
           ...item,
           category: item.category === 'Bag / Package' ? 'Packs & Bags' : item.category
@@ -5996,6 +6380,21 @@
     }
   })
 
+  authPasswordToggle.addEventListener('click', () => {
+    setAuthPasswordVisible(authPassword.type === 'password')
+    authPassword.focus()
+  })
+
+  authRememberCredentials.addEventListener('change', () => {
+    if (!authRememberCredentials.checked) {
+      try {
+        localStorage.removeItem(AUTH_CREDENTIALS_STORAGE_KEY)
+      } catch (err) {
+        console.warn('Could not clear saved auth credentials:', err)
+      }
+    }
+  })
+
   // Email/Password Form
   authForm.addEventListener('submit', async (e) => {
     e.preventDefault()
@@ -6025,6 +6424,7 @@
 
       if (isSignUpMode) {
         const result = await SupabaseService.signUpWithEmail(email, password, nickname)
+        persistAuthCredentials(email, password)
         authLoading.style.display = 'none'
         authContent.style.display = 'block'
 
@@ -6037,8 +6437,10 @@
         isSignUpMode = false
         updateAuthToggle()
         authForm.reset()
+        applySavedAuthCredentials()
       } else {
         const result = await SupabaseService.signInWithEmail(email, password)
+        persistAuthCredentials(email, password)
 
         // Check if email is confirmed
         if (result.user && !result.user.email_confirmed_at) {
@@ -6074,6 +6476,7 @@
   // Toggle between Sign In / Sign Up
   authToggleBtn.addEventListener('click', () => {
     isSignUpMode = !isSignUpMode
+    setAuthPasswordVisible(false)
     updateAuthToggle()
   })
 
@@ -6873,7 +7276,8 @@
           const cached = localStorage.getItem(cacheKey)
           const photoUrls = cached ? JSON.parse(cached) : {}
           photoUrls[item.image_path] = freshUrl
-          localStorage.setItem(cacheKey, JSON.stringify(photoUrls))
+          const cacheablePhotoUrls = photoUrlCache.getCacheablePhotoUrls(photoUrls, [item.image_path])
+          localStorage.setItem(cacheKey, JSON.stringify(cacheablePhotoUrls))
           localStorage.setItem('allmygear.photoUrlsCacheTime', Date.now().toString())
         } catch (e) {
           console.warn('Failed to update photo cache:', e)

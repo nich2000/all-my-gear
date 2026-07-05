@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -9,13 +10,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var wwwDir string
-var wwwURL string
-var wwwUseSSL bool
-var certFile string
-var keyFile string
-var url string
-var key string
+type serverConfig struct {
+	wwwDir          string
+	wwwURL          string
+	wwwUseSSL       bool
+	certFile        string
+	keyFile         string
+	supabaseURL     string
+	supabaseAnonKey string
+}
 
 func main() {
 	err := godotenv.Load()
@@ -23,69 +26,84 @@ func main() {
 		// log.Fatal("Error loading .env file")
 	}
 
-	wwwDir = os.Getenv("WWW_DIR")
-	if wwwDir == "" {
-		log.Fatal("WWW_DIR is empty")
+	cfg, err := loadConfig()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	wwwURL = os.Getenv("WWW_URL")
-	if wwwURL == "" {
-		log.Fatal("WWW_URL is empty")
-	}
-
-	wwwUseSSL = os.Getenv("WWW_USE_SSL") == "true" || os.Getenv("WWW_USE_SSL") == "1"
-
-	if wwwUseSSL {
-		certFile = os.Getenv("CERT_FILE")
-		if certFile == "" {
-			log.Fatal("CERT_FILE is empty")
-		}
-
-		keyFile = os.Getenv("KEY_FILE")
-		if keyFile == "" {
-			log.Fatal("KEY_FILE is empty")
-		}
-	}
-
-	url = os.Getenv("SUPABASE_URL")
-	if url == "" {
-		log.Fatal("SUPABASE_URL is empty")
-	}
-
-	key = os.Getenv("SUPABASE_ANON_KEY")
-	if key == "" {
-		log.Fatal("SUPABASE_ANON_KEY is empty")
-	}
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/js/supabase-config.js" {
-			renderSupabaseConfig(w, r)
-		} else {
-			staticHandler := http.FileServer(http.Dir(wwwDir))
-			http.StripPrefix("/", staticHandler).ServeHTTP(w, r)
-		}
-	})
-
-	log.Printf("Server starting on %v", wwwURL)
-	if wwwUseSSL {
-		log.Fatal(http.ListenAndServeTLS(wwwURL, certFile, keyFile, nil))
-	} else {
-		log.Fatal(http.ListenAndServe(wwwURL, nil))
-	}
+	log.Fatal(runServer(cfg))
 }
 
-func renderSupabaseConfig(w http.ResponseWriter, _ *http.Request) {
+func loadConfig() (serverConfig, error) {
+	cfg := serverConfig{
+		wwwDir:          os.Getenv("WWW_DIR"),
+		wwwURL:          os.Getenv("WWW_URL"),
+		wwwUseSSL:       os.Getenv("WWW_USE_SSL") == "true" || os.Getenv("WWW_USE_SSL") == "1",
+		supabaseURL:     os.Getenv("SUPABASE_URL"),
+		supabaseAnonKey: os.Getenv("SUPABASE_ANON_KEY"),
+	}
+
+	if cfg.wwwDir == "" {
+		return cfg, fmt.Errorf("WWW_DIR is empty")
+	}
+	if cfg.wwwURL == "" {
+		return cfg, fmt.Errorf("WWW_URL is empty")
+	}
+	if cfg.wwwUseSSL {
+		cfg.certFile = os.Getenv("CERT_FILE")
+		if cfg.certFile == "" {
+			return cfg, fmt.Errorf("CERT_FILE is empty")
+		}
+		cfg.keyFile = os.Getenv("KEY_FILE")
+		if cfg.keyFile == "" {
+			return cfg, fmt.Errorf("KEY_FILE is empty")
+		}
+	}
+	if cfg.supabaseURL == "" {
+		return cfg, fmt.Errorf("SUPABASE_URL is empty")
+	}
+	if cfg.supabaseAnonKey == "" {
+		return cfg, fmt.Errorf("SUPABASE_ANON_KEY is empty")
+	}
+
+	return cfg, nil
+}
+
+func newHandler(cfg serverConfig) http.Handler {
+	mux := http.NewServeMux()
+	staticHandler := http.FileServer(http.Dir(cfg.wwwDir))
+
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/js/supabase-config.js" {
+			renderSupabaseConfig(w, cfg)
+			return
+		}
+		http.StripPrefix("/", staticHandler).ServeHTTP(w, r)
+	})
+
+	return mux
+}
+
+func runServer(cfg serverConfig) error {
+	log.Printf("Server starting on %v", cfg.wwwURL)
+	if cfg.wwwUseSSL {
+		return http.ListenAndServeTLS(cfg.wwwURL, cfg.certFile, cfg.keyFile, newHandler(cfg))
+	}
+	return http.ListenAndServe(cfg.wwwURL, newHandler(cfg))
+}
+
+func renderSupabaseConfig(w http.ResponseWriter, cfg serverConfig) {
 	type ConfigData struct {
 		SupabaseUrl     string
 		SupabaseAnonKey string
 	}
 
 	data := ConfigData{
-		SupabaseUrl:     url,
-		SupabaseAnonKey: key,
+		SupabaseUrl:     cfg.supabaseURL,
+		SupabaseAnonKey: cfg.supabaseAnonKey,
 	}
 
-	tmpl, err := template.ParseFiles(wwwDir + "js/supabase-config.js")
+	tmpl, err := template.ParseFiles(cfg.wwwDir + "js/supabase-config.js")
 	if err != nil {
 		http.Error(w, "Template error", http.StatusInternalServerError)
 		return

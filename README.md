@@ -1,126 +1,134 @@
+# ALLMYGEAR
 
-# ALLMYGEAR — Personal Gear List
+ALLMYGEAR is a personal gear inventory and trip checklist web application. The current project is a vanilla JavaScript single-page app served by a small Go HTTP server. Persistent data, authentication, file storage and realtime updates are provided by Supabase.
 
-This is a simple static page to create and manage a gear list for trips.
+The old localStorage-only mode is now only a migration/fallback concern. The primary runtime path is:
 
-Features:
-- Add items with fields: category, name, brand, model, weight (g), price (₽).
-- Edit and delete items.
-- Search by name and filter by category.
-- Save data to the browser's `localStorage`.
-- Upload a small photo; images are automatically resized/compressed to keep storage reasonable.
-
-How to run
-1. Open `index.html` in your browser (double-click or use `open index.html` on macOS).
-
-Notes
-- Data is stored locally in your browser — clearing browser storage will remove the list.
-- To export the raw JSON from the console: `localStorage.getItem('allmygear.items')`.
-
-Files
-- `index.html` — main page
-- `styles.css` — styles
-- `app.js` — application logic
-
-If you want, I can add JSON import/export, a printable view, cloud sync, or switch to storing images externally.
-
-nano /etc/ssh/sshd_config
-Port 5678
-systemctl restart ssh
-
-ssh-copy-id -p 5678 root@37.230.113.213
-
-ssh -p 5678 root@37.230.113.213
-ssh -p 5678 root@all-my-gear.pro
-
-apt update
-apt upgrade
-
-apt install fail2ban certbot git
-sudo apt install rsyslog
-apt install docker.io
-https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository
-
-systemctl enable docker
-systemctl start docker
-
-https://supabase.com/docs/guides/self-hosting
-
-git clone https://github.com/supabase/supabase
-mkdir all-my-gear
-cp -rf supabase/docker/* all-my-gear/
-cp supabase/docker/.env.example all-my-gear/.env
-cd all-my-gear
-docker compose pull
-
-sh ./utils/generate-keys.sh
-
-docker compose up -d
-
-docker pull nichalterego/all-my-gear:latest
-
-apt install nginx
-
-sudo nano /etc/nginx/sites-available/all-my-gear
-
-```
-server {
-    listen 80;
-    server_name all-my-gear.pro;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    http2 on;  # <-- Новое место для http2
-    server_name all-my-gear.pro;
-
-    # Пути к сертификатам
-    ssl_certificate /etc/letsencrypt/live/all-my-gear.pro/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/all-my-gear.pro/privkey.pem;
-
-    # Безопасность SSL
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache shared:SSL:10m;
-
-    # Прокси общие заголовки
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-
-    # Проксирование всего на основной Go-сервер (порт 8080)
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-    }
-
-    # Проксирование аутентификации на отдельный Go-сервер (порт 8000)
-    location /auth {
-        proxy_pass http://127.0.0.1:8000;
-    }
-}
+```text
+Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 ```
 
-sudo ln -s /etc/nginx/sites-available/all-my-gear /etc/nginx/sites-enabled/
+## Main Features
 
-sudo rm /etc/nginx/sites-enabled/default
+- Gear inventory with category, brand, model, weight, price, purchase year, rating, comment and photo.
+- User authentication through Supabase Auth.
+- Per-user category ordering and sorting preferences.
+- Storage locations for gear items.
+- Trip checklists with selected gear items, dates and activity tags.
+- Share links for individual items and checklists.
+- Realtime synchronization for gear items and checklists.
+- Photo upload to the `gear-photos` Supabase Storage bucket with signed URL caching on the client.
+- Migration helper from legacy `localStorage` keys.
 
-sudo nginx -t
-sudo systemctl reload nginx
-или
-sudo systemctl restart nginx
+## Repository Layout
 
+| Path | Purpose |
+| --- | --- |
+| `cmd/main.go` | Go HTTP server. Serves `www/` and renders `www/js/supabase-config.js` from environment variables. |
+| `www/index.html` | SPA HTML shell, CSP, auth/profile/share/checklist modals and script loading. |
+| `www/js/app.js` | Main UI state, rendering, forms, checklists, sharing, image handling and realtime wiring. |
+| `www/js/supabase-service.js` | Supabase client wrapper for auth, database, storage, sharing and subscriptions. |
+| `www/style/style.css` | Application styles. |
+| `supabase/migrations/` | Ordered Supabase migrations for the application schema. |
+| `sql/allmygear.sql` | Deprecated pointer kept for manual reference. |
+| `sql/*_rows.sql` | Exported data rows for application tables. Treat as data snapshots, not migrations. |
+| `supabase/docker-compose.yml` | Self-hosted Supabase stack. |
+| `nginx/all-my-gear` | Production nginx reverse proxy example. |
+| `scripts/*.sh` | Docker pull/run/stop and certbot helper scripts. |
+| `Dockerfile` | Multi-stage Docker image for the Go server plus static assets. |
+| `docs/` | Project analysis, architecture, data model and operations documentation. |
 
-https://arenda-server.cloud/blog/kak-ustanovit-i-nastroit-postfix-na-ubuntu-24-04/
+## Configuration
 
-sudo nano /etc/postfix/sasl_passwd
+The Go server requires these environment variables:
 
-sudo postmap /etc/postfix/sasl_passwd
+| Variable | Required | Description |
+| --- | --- | --- |
+| `WWW_DIR` | yes | Directory with static assets. Docker value: `/app/www/`. Local value: `./www/`. Must include trailing slash because the server concatenates `wwwDir + "js/supabase-config.js"`. |
+| `WWW_URL` | yes | Listen address, for example `:8080`. |
+| `WWW_USE_SSL` | no | `true` or `1` makes the Go server use TLS directly. Production currently terminates TLS at nginx, so this is usually `false`. |
+| `CERT_FILE` | when `WWW_USE_SSL=true` | TLS certificate path for direct Go TLS mode. |
+| `KEY_FILE` | when `WWW_USE_SSL=true` | TLS key path for direct Go TLS mode. |
+| `SUPABASE_URL` | yes | Public Supabase API URL exposed to the browser. |
+| `SUPABASE_ANON_KEY` | yes | Supabase anonymous key exposed to the browser. Authorization must be enforced by RLS policies. |
 
-sudo chmod 600 /etc/postfix/sasl_passwd*
+Example local `.env`:
 
-echo "Test mail from postfix" | mail -s "Test Postfix" nich2000@mail.ru
+```env
+WWW_DIR=./www/
+WWW_URL=:8080
+WWW_USE_SSL=false
+SUPABASE_URL=http://localhost:8000
+SUPABASE_ANON_KEY=replace-with-local-anon-key
+```
 
-mailq
+Do not commit real secrets. The anon key is public by design, but service role keys, JWT secrets, SMTP passwords and database passwords must remain outside git.
+
+## Local Development
+
+Run the Go server:
+
+```bash
+go run ./cmd/main.go
+```
+
+Or build the binary:
+
+```bash
+make build
+./bin/app
+```
+
+The app needs a reachable Supabase instance matching `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Opening `www/index.html` directly is no longer the normal path because `js/supabase-config.js` is a Go template rendered at request time.
+
+## Docker
+
+Build the application image:
+
+```bash
+make docker_build
+```
+
+Run the published image using the helper:
+
+```bash
+./scripts/run.sh
+```
+
+Before using `scripts/run.sh`, fill `SUPABASE_ANON_KEY` and confirm `SUPABASE_URL` matches the public Supabase endpoint. The script maps the app on host port `8080`.
+
+## Production Shape
+
+The checked-in nginx config routes:
+
+- `/` to the Go app on `127.0.0.1:8080`
+- `/auth`, `/rest`, `/storage`, `/realtime` to Supabase Kong on `127.0.0.1:8000`
+
+TLS is terminated by nginx with Let's Encrypt certificates for `all-my-gear.pro`.
+
+## Documentation
+
+- [Project Analysis](docs/PROJECT_ANALYSIS.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Data Model](docs/DATA_MODEL.md)
+- [Operations](docs/OPERATIONS.md)
+
+## Current Risk Summary
+
+- Authoritative database changes now live in `supabase/migrations`; `sql/*_rows.sql` files are data exports.
+- Client code calls `gear_catalog`, `search_gear_catalog` and Supabase Storage bucket `gear-photos`; those runtime objects still need migrations or explicit provisioning docs.
+- `www/js/app.js` is large and mixes UI, state, data mapping and workflows in one file; future feature work should isolate risky changes.
+
+## Verification
+
+Basic backend check:
+
+```bash
+go test ./...
+```
+
+Build check:
+
+```bash
+make build
+```
