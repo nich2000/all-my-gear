@@ -40,7 +40,7 @@ Client access:
 - `saveItemsOrder`
 - realtime subscription on `gear_items`
 
-Security note: RLS allows owners, public rows and explicit shared grants. Only owners can insert/update/delete.
+Security note: RLS allows owners, public rows and explicit shared grants. Owners can insert/update/delete. A recipient with an `editor` grant can update content, but cannot change ownership, visibility, publication fields or the access list.
 
 ### `checklists`
 
@@ -70,7 +70,7 @@ Client access:
 - `deleteChecklist`
 - realtime subscription on `checklists`
 
-Security note: RLS allows owners, public rows and explicit shared grants. Public checklist snapshots must not expose private item fields.
+Security note: RLS allows owners, public rows and explicit shared grants. A recipient with an `editor` grant can update checklist content, but cannot change ownership, visibility, publication fields or the access list. Public checklist snapshots must not expose private item fields.
 
 ### `outdoor_activities`
 
@@ -199,11 +199,11 @@ Security note: RLS allows owners, public rows and explicit shared grants. Deleti
 
 Subscriptions control whether a user can publish private/shared resources.
 
-- `subscription_plans` stores plan capabilities: `can_make_private` and `can_share_with_users`.
+- `subscription_plans` stores capabilities and limits: `can_make_private`, `can_share_with_users`, `can_grant_edit`, `max_shared_users`, `max_editors` and `max_active_share_links`.
 - `user_subscriptions` stores active/trialing plan membership.
 - `user_entitlements` is a view consumed by the frontend through `getCurrentUserEntitlements()`.
 
-Free users can only save `public` visibility. Subscriber entitlements allow `private` and `shared`.
+Free users can only save `public` visibility. Subscriber entitlements allow `private`, `shared`, edit grants and higher sharing limits. The limits are enforced by database functions so future plan changes do not depend on frontend checks.
 
 ### `resource_access_grants`
 
@@ -218,23 +218,23 @@ Important columns:
 | `owner_id` | `uuid` | Resource owner. |
 | `grantee_user_id` | `uuid` | Optional target user id. |
 | `grantee_email` | `text` | Optional target email. |
-| `role` | `text` | Currently `viewer`. |
+| `role` | `text` | `viewer` or `editor`; Enable edit creates an `editor` grant. |
 
 Client access:
 
-- `getResourceAccessGrants`
-- `grantResourceAccess`
-- `revokeResourceAccess`
+- `get_resource_access_settings`
+- `configure_resource_access`
+- `revoke_temporary_share_link`
 
 ### Visible Search RPCs
 
 The frontend uses RPCs for global visible search:
 
-- `search_visible_gear(search_query, result_limit, result_offset)`
-- `search_visible_checklists(search_query, result_limit, result_offset)`
+- `search_visible_gear(search_query, result_limit, result_offset, access_scope)`
+- `search_visible_checklists(search_query, result_limit, result_offset, access_scope)`
 - `search_visible_storages(search_query, result_limit, result_offset)`
 
-Each RPC returns an `access_source` value: `mine`, `public` or `shared_with_me`.
+Gear and checklist search accept `shared_by_me` and `shared_with_me` scopes. Results include ownership direction, effective role, edit permission and access/link counts in addition to `access_source`.
 
 ### `shared_items`
 
@@ -260,7 +260,7 @@ Client access:
 - `createChecklistShare`
 - `getSharedChecklist`
 
-Security note: owners can manage their shares, and anonymous users can read non-expired share rows. `item_id` and `checklist_id` are mutually exclusive and cascade-delete share rows when the source object is deleted. Historical share snapshots can be normalized with `202607050009_normalize_shared_item_image_paths.sql`, which replaces embedded base64 image payloads with canonical `gear_items.image_path` values.
+Security note: temporary links are a separate, anonymous, read-only snapshot channel. They never create an authenticated grant, never provide edit access and do not appear in Shared by me / Shared with me. Owners can revoke individual links; changing a resource to Private can optionally revoke all active links. `item_id` and `checklist_id` are mutually exclusive and cascade-delete share rows when the source object is deleted. Historical share snapshots can be normalized with `202607050009_normalize_shared_item_image_paths.sql`, which replaces embedded base64 image payloads with canonical `gear_items.image_path` values.
 
 ## Runtime Objects With Remaining Provisioning Gaps
 
@@ -292,8 +292,8 @@ Current/legacy keys observed in the client:
 
 Before production changes, verify these Supabase policies directly in the live project:
 
-- `gear_items`: users can select rows they own, public rows and rows shared with them; only owners can mutate.
-- `checklists`: users can select rows they own, public rows and rows shared with them; only owners can mutate.
+- `gear_items`: users can select rows they own, public rows and rows shared with them; owners and explicit editors can update, while only owners can change access or delete.
+- `checklists`: users can select rows they own, public rows and rows shared with them; owners and explicit editors can update, while only owners can change access or delete.
 - `category_order`: authenticated users can select/insert/update/delete only their own rows.
 - `storages`: users can select rows they own, public rows and rows shared with them; only owners can mutate.
 - `shared_items`: owners can create shares; anonymous users can read non-expired public share rows; expired shares should not expose data.

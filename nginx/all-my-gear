@@ -24,10 +24,30 @@ server {
     add_header Permissions-Policy "clipboard-write=(self), camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://all-my-gear.pro:8443 https://*.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: http://localhost:8000 http://127.0.0.1:8000 https://*.supabase.co; connect-src 'self' http://localhost:8000 http://127.0.0.1:8000 ws://localhost:8000 ws://127.0.0.1:8000 https://*.supabase.co wss://*.supabase.co; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'none'; object-src 'none'; form-action 'self' https://all-my-gear.pro:8443 https://*.supabase.co" always;
 
+    # The flag is checked for every new request, so maintenance mode can be
+    # switched without stopping the app container or reloading nginx.
+    set $maintenance_mode 0;
+    if (-f /var/lib/all-my-gear/maintenance.enabled) {
+        set $maintenance_mode 1;
+    }
+    if ($uri = /maintenance.html) {
+        set $maintenance_mode 0;
+    }
+    if ($maintenance_mode = 1) {
+        return 503;
+    }
+
+    error_page 503 =503 /maintenance.html;
+
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+
+    location = /maintenance.html {
+        internal;
+        root /var/www/all-my-gear;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8080;

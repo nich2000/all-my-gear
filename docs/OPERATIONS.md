@@ -104,6 +104,43 @@ Expected routing:
 
 The nginx site also owns production security headers. CSP should be changed in `nginx/all-my-gear`, not by adding a second meta policy to `www/index.html`.
 
+### Maintenance Mode
+
+The production nginx config checks `/var/lib/all-my-gear/maintenance.enabled` on every new request. While the flag exists, `/`, `/auth`, `/rest`, `/storage` and `/realtime` return HTTP 503 with the standalone maintenance page. The page does not depend on the app or Supabase containers.
+
+Install the page and updated nginx config once:
+
+```bash
+sudo ./scripts/maintenance.sh install
+sudo cp nginx/all-my-gear /etc/nginx/sites-available/all-my-gear
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Enable maintenance mode before a deployment or database migration:
+
+```bash
+sudo ./scripts/maintenance.sh on
+curl -I https://all-my-gear.pro/
+```
+
+The expected response is `503 Service Unavailable`. New REST, Auth, Storage and Realtime requests are blocked as well:
+
+```bash
+curl -I https://all-my-gear.pro/rest/v1/
+curl -I https://all-my-gear.pro/auth/v1/health
+```
+
+Check or disable the mode:
+
+```bash
+sudo ./scripts/maintenance.sh status
+sudo ./scripts/maintenance.sh off
+curl -I https://all-my-gear.pro/
+```
+
+Disabling removes only the flag and takes effect without reloading nginx. Do not disable maintenance mode until database, container and public smoke checks have passed.
+
 Validation commands on the server:
 
 ```bash
@@ -128,37 +165,90 @@ After renewal, reload nginx if certbot does not do it automatically.
 
 ## Deployment Checklist
 
-1. Build and publish the app image.
-2. Pull the new image on the server.
-3. Stop the old `all-my-gear` container.
-4. Start the new container with the correct environment.
-5. Check container state:
+Production paths used by the current installation:
+
+| Purpose | Path |
+| --- | --- |
+| Supabase compose and volumes | `/root/all-my-gear` |
+| Ordered SQL migrations | `/root/migrations` |
+| Operational scripts | `/root/scripts` |
+| Release documentation/staging | `/root/deploy-visibility-20260723` |
+| Backups | `/root/all-my-gear-backups` |
+
+Use an immutable application image tag for every release. Do not deploy `latest`: retaining the previous tagged container and image makes rollback deterministic.
+
+1. Build, test and publish an immutable app image.
+2. Upload migrations, scripts, nginx assets and release documentation.
+3. Pull the new image on the server.
+4. Take and verify a fresh backup:
+
+```bash
+BACKUP_ROOT=/root/all-my-gear-backups \
+SUPABASE_DIR=/root/all-my-gear \
+DB_USER=supabase_admin \
+/root/scripts/backup.sh
+```
+
+5. Enable maintenance mode and verify HTTP 503:
+
+```bash
+/root/scripts/maintenance.sh on
+curl -I https://all-my-gear.pro/
+```
+
+6. Preview, apply and verify database migrations:
+
+```bash
+MIGRATIONS_DIR=/root/migrations DB_USER=supabase_admin DRY_RUN=true \
+  /root/scripts/apply-migrations.sh
+MIGRATIONS_DIR=/root/migrations DB_USER=supabase_admin \
+  /root/scripts/apply-migrations.sh
+```
+
+7. Stop the old app container, rename it to a release-specific rollback name and set its restart policy to `no`. Start the new container as `all-my-gear`.
+8. Check container state:
 
 ```bash
 docker ps
 docker logs all-my-gear --tail 100
 ```
 
-6. Check nginx:
+9. Check nginx:
 
 ```bash
 sudo nginx -t
 sudo systemctl status nginx
 ```
 
-7. Check public app:
+10. Check the app upstream directly while maintenance mode remains enabled:
+
+```bash
+curl -I http://127.0.0.1:8080/
+```
+
+11. Disable maintenance mode and check the public app:
 
 ```bash
 curl -I https://all-my-gear.pro/
 curl -I https://all-my-gear.pro/js/supabase-config.js
 ```
 
-8. Check CSP and Supabase routes:
+12. Check CSP and Supabase routes:
 
 ```bash
 curl -I https://all-my-gear.pro/ | grep -i content-security-policy
 curl -I https://all-my-gear.pro/auth/v1/health
 ```
+
+13. Verify the migration ledger and the active image:
+
+```bash
+docker inspect all-my-gear --format '{{.Config.Image}} {{.State.Status}}'
+docker exec supabase-db psql -U supabase_admin -d postgres -c \
+  'select filename, applied_at from public.schema_migrations order by filename desc limit 10;'
+```
+
+Keep the rollback container stopped with restart policy `no` until the release observation period is complete. Removing the rollback container or old image is a separate destructive operation and must not be part of the normal deployment procedure.
 
 ## Backup And Restore
 

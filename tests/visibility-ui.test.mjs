@@ -7,7 +7,10 @@ const {
   buildResourceSavePayload,
   canEditResource,
   canSelectVisibility,
+  getAccessSettings,
   getSearchResultBadges,
+  hasSharedVisibility,
+  isResourceOwner,
   mapChecklistRowToModel,
   mapGearRowToModel,
   mapStorageRowToModel,
@@ -23,19 +26,27 @@ test('free users can only select public visibility', () => {
 })
 
 test('subscribed users can select private and shared visibility', () => {
-  const paidEntitlements = { canUsePrivateVisibility: true }
+  const paidEntitlements = {
+    canUsePrivateVisibility: true,
+    canUseSharedVisibility: true
+  }
 
   assert.equal(canSelectVisibility('private', paidEntitlements), true)
   assert.equal(canSelectVisibility('shared', paidEntitlements), true)
+  assert.equal(hasSharedVisibility(paidEntitlements), true)
 })
 
-test('only own resources can be edited', () => {
+test('owners and explicitly enabled editors can edit resources', () => {
   assert.equal(canEditResource({ accessSource: 'mine' }), true)
   assert.equal(canEditResource({ access_source: 'mine' }), true)
+  assert.equal(canEditResource({ access_source: 'shared_with_me', access_role: 'editor' }), true)
+  assert.equal(canEditResource({ access_source: 'shared_with_me', can_edit: true }), true)
   assert.equal(canEditResource({ accessSource: 'public' }), false)
   assert.equal(canEditResource({ accessSource: 'shared' }), false)
   assert.equal(canEditResource({ access_source: 'shared_with_me' }), false)
   assert.equal(canEditResource({ visibility: 'private' }), false)
+  assert.equal(isResourceOwner({ access_source: 'mine' }), true)
+  assert.equal(isResourceOwner({ access_source: 'shared_with_me', access_role: 'editor' }), false)
 })
 
 test('maps database rows to frontend models with visibility fields', () => {
@@ -68,12 +79,52 @@ test('builds save payload without persisting read-only access source', () => {
 test('search result badges identify visibility and source', () => {
   assert.deepEqual(getSearchResultBadges({ visibility: 'public', accessSource: 'public' }), {
     visibility: 'Public',
-    source: 'Public'
+    source: 'Public',
+    role: null
   })
 
-  assert.deepEqual(getSearchResultBadges({ visibility: 'shared', access_source: 'shared' }), {
+  assert.deepEqual(getSearchResultBadges({
+    visibility: 'shared',
+    access_source: 'shared',
+    share_direction: 'shared_with_me',
+    access_role: 'editor'
+  }), {
     visibility: 'Shared',
-    source: 'Shared with me'
+    source: 'Shared with me',
+    role: 'Can edit'
+  })
+})
+
+test('access settings preserve viewer and editor recipients', () => {
+  const fakeContainer = {
+    _visibilityState: {
+      visibility: 'shared',
+      recipients: [
+        { email: 'viewer@example.test', role: 'viewer' },
+        { user_id: 'user-2', email: 'editor@example.test', role: 'editor' }
+      ],
+      revokeTemporaryLinks: true
+    },
+    querySelector() {
+      return null
+    }
+  }
+
+  assert.deepEqual(getAccessSettings(fakeContainer), {
+    visibility: 'shared',
+    recipients: [
+      {
+        user_id: null,
+        email: 'viewer@example.test',
+        role: 'viewer'
+      },
+      {
+        user_id: 'user-2',
+        email: 'editor@example.test',
+        role: 'editor'
+      }
+    ],
+    revokeTemporaryLinks: true
   })
 })
 

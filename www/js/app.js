@@ -56,13 +56,18 @@
   const photoUrlCache = window.PhotoUrlCache
   const appHelpers = window.AppHelpers
   const visibilityUI = window.VisibilityUI
-  let visibilityEntitlements = { canUsePrivateVisibility: false }
+  let visibilityEntitlements = {
+    canUsePrivateVisibility: false,
+    canUseSharedVisibility: false,
+    canGrantEdit: false
+  }
 
   // Storage management
   let storages = [] // Array of storage locations {id, name, created}
   let currentStorageFilters = [] // empty = show all, otherwise selected storage ids
   let visibleSearchResults = null
   let visibleSearchScope = 'mine'
+  let visibleChecklistScope = 'mine'
   let showEmptyGearCategories = false
   let currentChecklistStorageFilter = {} // {checklistId: storageId} - filters per checklist
   let checklistCategorySortState = {} // {checklistId: {category: {type: 'name', order: 'asc'}}} - sort state per checklist category
@@ -75,11 +80,33 @@
   function renderVisibilityPicker(containerId, resource = {}) {
     const container = document.getElementById(containerId)
     if (!container || !visibilityUI) return
+    const readOnlyAccess = Boolean(resource.id && !isResourceOwner(resource))
+    container.dataset.resourceId = resource.id || ''
     visibilityUI.renderVisibilityPicker(container, {
       value: resource.visibility || 'public',
       entitlements: visibilityEntitlements,
-      grants: resource.grants || []
+      grants: resource.grants || [],
+      temporaryLinks: resource.temporaryLinks || [],
+      readOnlyAccess,
+      onRevokeLink: linkId => SupabaseService.revokeTemporaryShareLink(linkId)
     })
+
+    if (resource.id && !readOnlyAccess) {
+      SupabaseService.getResourceAccessSettings(resource.resourceType || 'gear_item', resource.id)
+        .then(settings => {
+          if (container.dataset.resourceId !== resource.id) return
+          visibilityUI.renderVisibilityPicker(container, {
+            value: settings.visibility,
+            entitlements: visibilityEntitlements,
+            grants: settings.recipients,
+            temporaryLinks: settings.temporaryLinks,
+            onRevokeLink: linkId => SupabaseService.revokeTemporaryShareLink(linkId)
+          })
+        })
+        .catch(err => {
+          console.warn('Unable to load access settings:', err)
+        })
+    }
   }
 
   function getVisibilityValue(containerId) {
@@ -93,6 +120,31 @@
     if (!accessSource && !ownerId) return true
     if (visibilityUI?.canEditResource) return visibilityUI.canEditResource(resource)
     return accessSource === 'mine'
+  }
+
+  function isResourceOwner(resource) {
+    if (visibilityUI?.isResourceOwner) return visibilityUI.isResourceOwner(resource)
+    return (resource?.accessSource || resource?.access_source) === 'mine'
+  }
+
+  function getAccessSettings(containerOrId) {
+    const container = typeof containerOrId === 'string'
+      ? document.getElementById(containerOrId)
+      : containerOrId
+    return visibilityUI?.getAccessSettings(container) || {
+      visibility: 'public',
+      recipients: [],
+      revokeTemporaryLinks: false
+    }
+  }
+
+  async function saveResourceAccessSettings(resourceType, resourceId, containerOrId, resource) {
+    if (resource && !isResourceOwner(resource)) return null
+    return SupabaseService.configureResourceAccess(
+      resourceType,
+      resourceId,
+      getAccessSettings(containerOrId)
+    )
   }
 
   function alertOwnerOnly(resourceType) {
@@ -1264,7 +1316,8 @@
             <option value="mine" ${visibleSearchScope === 'mine' ? 'selected' : ''}>Mine</option>
             <option value="all_visible" ${visibleSearchScope === 'all_visible' ? 'selected' : ''}>All visible</option>
             <option value="public" ${visibleSearchScope === 'public' ? 'selected' : ''}>Public</option>
-            <option value="shared" ${visibleSearchScope === 'shared' ? 'selected' : ''}>Shared with me</option>
+            <option value="shared_by_me" ${visibleSearchScope === 'shared_by_me' ? 'selected' : ''}>Shared by me</option>
+            <option value="shared_with_me" ${visibleSearchScope === 'shared_with_me' ? 'selected' : ''}>Shared with me</option>
           </select>
           <button class="toolbar-storage-btn" id="refreshVisibleSearch" title="Refresh visible search" aria-label="Refresh visible search">
             <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -1414,8 +1467,11 @@
 
     document.querySelectorAll('.card[data-id]').forEach(card => {
       const item = renderItems.find(it => it.id === card.dataset.id)
+      if (item && !isResourceOwner(item)) {
+        card.querySelectorAll('[data-action="share"], [data-action="delete"], [data-action="add-photo"], [data-action="replace-photo"], [data-action="remove-photo"], .delete-edit, .photo-action-btn').forEach(el => el.remove())
+      }
       if (item && !canEditResource(item)) {
-        card.querySelectorAll('[data-action="edit"], [data-action="delete"], [data-action="add-photo"], [data-action="replace-photo"], [data-action="remove-photo"], .delete-edit, .photo-action-btn').forEach(el => el.remove())
+        card.querySelectorAll('[data-action="edit"]').forEach(el => el.remove())
         const editForm = card.querySelector('.card-edit-form')
         if (editForm) editForm.remove()
       }
@@ -1914,6 +1970,7 @@
       return
     }
 
+    const accessSettings = getAccessSettings('gearVisibilityPicker')
     let itemId
     if(editingId){
       // Optimistic update: update UI immediately
@@ -1936,22 +1993,28 @@
       photoPreview.innerHTML = ''
 
       // Save to Supabase in background
-      SupabaseService.updateGearItem(itemId, data).catch(err => {
-        console.error('Error updating item:', err)
-        // Rollback on error
-        if(oldItem && idx !== -1) {
-          items[idx] = oldItem
-          invalidateStatsCache()
-          render()
-        }
-        alert('Error updating item: ' + err.message)
-      })
+      SupabaseService.updateGearItem(itemId, data)
+        .then(() => SupabaseService.configureResourceAccess('gear_item', itemId, accessSettings))
+        .catch(err => {
+          console.error('Error updating item:', err)
+          // Rollback on error
+          if(oldItem && idx !== -1) {
+            items[idx] = oldItem
+            invalidateStatsCache()
+            render()
+          }
+          alert('Error updating item: ' + err.message)
+        })
 
       return // Exit early to prevent duplicate render
     } else {
       // Create in Supabase with optimistic UI update
       itemId = uid()
-      const newItem = Object.assign({id:itemId, created:Date.now()}, data)
+      const newItem = Object.assign({
+        id: itemId,
+        created: Date.now(),
+        accessSource: 'mine'
+      }, data)
 
       // Optimistic update: add to UI immediately
       items.unshift(newItem)
@@ -1964,17 +2027,19 @@
       photoPreview.innerHTML = ''
 
       // Then save to server in background
-      SupabaseService.createGearItem(newItem).catch(err => {
-        console.error('Error creating item:', err)
-        // Rollback on error
-        const idx = items.findIndex(i => i.id === itemId)
-        if (idx !== -1) {
-          items.splice(idx, 1)
-          invalidateStatsCache()
-          render()
-        }
-        alert('Error creating item: ' + err.message)
-      })
+      SupabaseService.createGearItem(newItem)
+        .then(() => SupabaseService.configureResourceAccess('gear_item', itemId, accessSettings))
+        .catch(err => {
+          console.error('Error creating item:', err)
+          // Rollback on error
+          const idx = items.findIndex(i => i.id === itemId)
+          if (idx !== -1) {
+            items.splice(idx, 1)
+            invalidateStatsCache()
+            render()
+          }
+          alert('Error creating item: ' + err.message)
+        })
 
       // Add to selected checklists
       const selectedChecklistIds = Array.from(
@@ -2349,7 +2414,7 @@
     } else if(action==='edit'){
       const card = e.target.closest('.card')
       if(!card) return
-      const item = items.find(i => i.id === id)
+      const item = items.find(i => i.id === id) || visibleSearchResults?.find(i => i.id === id)
       if (item && !canEditResource(item)) {
         alertOwnerOnly('gear items')
         return
@@ -2364,8 +2429,23 @@
           visibilityUI.renderVisibilityPicker(picker, {
             value: item?.visibility || 'public',
             entitlements: visibilityEntitlements,
-            grants: item?.grants || []
+            grants: item?.grants || [],
+            readOnlyAccess: !isResourceOwner(item),
+            onRevokeLink: linkId => SupabaseService.revokeTemporaryShareLink(linkId)
           })
+          if (isResourceOwner(item)) {
+            SupabaseService.getResourceAccessSettings('gear_item', item.id)
+              .then(settings => {
+                visibilityUI.renderVisibilityPicker(picker, {
+                  value: settings.visibility,
+                  entitlements: visibilityEntitlements,
+                  grants: settings.recipients,
+                  temporaryLinks: settings.temporaryLinks,
+                  onRevokeLink: linkId => SupabaseService.revokeTemporaryShareLink(linkId)
+                })
+              })
+              .catch(err => console.warn('Unable to load item access settings:', err))
+          }
         }
       }
     }
@@ -2376,7 +2456,7 @@
     if(e.target.matches('[data-field="photo"]')){
       const input = e.target
       const id = input.dataset.id
-      const item = items.find(i => i.id === id)
+      const item = items.find(i => i.id === id) || visibleSearchResults?.find(i => i.id === id)
       if (item && !canEditResource(item)) {
         input.value = ''
         alertOwnerOnly('gear items')
@@ -2473,7 +2553,7 @@
       const btn = e.target.closest('.photo-overlay-btn')
       const action = btn.dataset.action
       const id = btn.dataset.id
-      const item = items.find(i => i.id === id)
+      const item = items.find(i => i.id === id) || visibleSearchResults?.find(i => i.id === id)
       if (item && !canEditResource(item)) {
         alertOwnerOnly('gear items')
         return
@@ -2502,7 +2582,7 @@
       e.stopPropagation()
       const btn = e.target.closest('.photo-action-btn')
       const id = btn.dataset.id
-      const item = items.find(i => i.id === id)
+      const item = items.find(i => i.id === id) || visibleSearchResults?.find(i => i.id === id)
       if (item && !canEditResource(item)) {
         alertOwnerOnly('gear items')
         return
@@ -2530,7 +2610,7 @@
     if(e.target.closest('.save-edit')){
       const btn = e.target.closest('.save-edit')
       const id = btn.dataset.id
-      const item = items.find(i => i.id === id)
+      const item = items.find(i => i.id === id) || visibleSearchResults?.find(i => i.id === id)
       if (item && !canEditResource(item)) {
         alertOwnerOnly('gear items')
         return
@@ -2544,51 +2624,58 @@
         return
       }
 
-      const itemIdx = items.findIndex(i=>i.id===id)
+      const itemCollection = visibleSearchResults || items
+      const itemIdx = itemCollection.findIndex(i=>i.id===id)
       if(itemIdx !== -1){
-        const oldCategory = items[itemIdx].category
+        const oldCategory = itemCollection[itemIdx].category
         const newCategory = form.querySelector('[data-field="category"]').value || ''
 
-        items[itemIdx].category = newCategory
-        items[itemIdx].name = name
-        items[itemIdx].brand = form.querySelector('[data-field="brand"]').value.trim()
-        items[itemIdx].model = form.querySelector('[data-field="model"]').value.trim()
-        items[itemIdx].weight = Number(form.querySelector('[data-field="weight"]').value) || 0
-        items[itemIdx].price = form.querySelector('[data-field="price"]').value ? Number(form.querySelector('[data-field="price"]').value) : 0
-        items[itemIdx].year = form.querySelector('[data-field="year"]').value ? Number(form.querySelector('[data-field="year"]').value) : null
+        itemCollection[itemIdx].category = newCategory
+        itemCollection[itemIdx].name = name
+        itemCollection[itemIdx].brand = form.querySelector('[data-field="brand"]').value.trim()
+        itemCollection[itemIdx].model = form.querySelector('[data-field="model"]').value.trim()
+        itemCollection[itemIdx].weight = Number(form.querySelector('[data-field="weight"]').value) || 0
+        itemCollection[itemIdx].price = form.querySelector('[data-field="price"]').value ? Number(form.querySelector('[data-field="price"]').value) : 0
+        itemCollection[itemIdx].year = form.querySelector('[data-field="year"]').value ? Number(form.querySelector('[data-field="year"]').value) : null
 
         // Handle storageId update
         const storageIdField = form.querySelector('[data-field="storageId"]')
-        items[itemIdx].storageId = storageIdField && storageIdField.value ? storageIdField.value : null
+        itemCollection[itemIdx].storageId = storageIdField && storageIdField.value ? storageIdField.value : null
 
         // Handle comment update
         const commentField = form.querySelector('[data-field="comment"]')
-        items[itemIdx].comment = commentField ? commentField.value.trim() : ''
+        itemCollection[itemIdx].comment = commentField ? commentField.value.trim() : ''
 
         const visibilityPicker = form.querySelector('.inline-visibility-picker')
         if (visibilityPicker && visibilityUI) {
-          items[itemIdx].visibility = visibilityUI.getSelectedVisibility(visibilityPicker)
+          itemCollection[itemIdx].visibility = visibilityUI.getSelectedVisibility(visibilityPicker)
         }
 
         // Handle rating update
         const ratingInput = card.querySelector(`input[name="rating-${id}"]:checked`)
-        items[itemIdx].rating = ratingInput ? Number(ratingInput.value) : 0
+        itemCollection[itemIdx].rating = ratingInput ? Number(ratingInput.value) : 0
 
         // Handle photo update
         const photoInput = form.querySelector('[data-field="photo"]')
         if(photoInput && photoInput.dataset.photoChanged === 'true'){
           // Photo was changed (either new photo or cleared)
-          items[itemIdx].image = photoInput.dataset.photoData || null
+          itemCollection[itemIdx].image = photoInput.dataset.photoData || null
         }
         // If photoChanged flag is not set, preserve existing image
 
         // Save to Supabase for authenticated users (in background)
         if(isAuthenticated) {
-          const itemData = {...items[itemIdx]}
-          SupabaseService.updateGearItem(id, itemData).catch(err => {
-            console.error('Error updating item:', err)
-            alert('Error updating item: ' + err.message)
-          })
+          const itemData = {...itemCollection[itemIdx]}
+          SupabaseService.updateGearItem(id, itemData)
+            .then(async () => {
+              if (isResourceOwner(itemData) && visibilityPicker) {
+                await saveResourceAccessSettings('gear_item', id, visibilityPicker, itemData)
+              }
+            })
+            .catch(err => {
+              console.error('Error updating item:', err)
+              alert('Error updating item: ' + err.message)
+            })
         }
       }
 
@@ -2664,7 +2751,7 @@
       const btn = e.target.closest('.delete-edit')
       const id = btn.dataset.id
       const item = items.find(i => i.id === id)
-      if (item && !canEditResource(item)) {
+      if (item && !isResourceOwner(item)) {
         alertOwnerOnly('gear items')
         return
       }
@@ -3815,11 +3902,6 @@
   function renderChecklist(){
     checklistCardsEl.innerHTML = ''
 
-    if(checklists.length === 0){
-      checklistCardsEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)"><p>No checklists yet. Create one to start planning your trip!</p></div>'
-      return
-    }
-
     // Insert checklist-order toolbar (same as gear) before checklists
     const toolbar = document.createElement('div')
     toolbar.className = 'category-order-toolbar'
@@ -3830,6 +3912,16 @@
           <path d="m21 21-4.35-4.35"/>
         </svg>
         <input id="checklistSearch" type="search" placeholder="Search checklists...">
+      </div>
+      <div class="toolbar-storage-controls">
+        <span class="toolbar-storage-label">Visibility</span>
+        <select id="visibleChecklistScope" class="toolbar-storage-select">
+          <option value="mine" ${visibleChecklistScope === 'mine' ? 'selected' : ''}>Mine</option>
+          <option value="all_visible" ${visibleChecklistScope === 'all_visible' ? 'selected' : ''}>All visible</option>
+          <option value="public" ${visibleChecklistScope === 'public' ? 'selected' : ''}>Public</option>
+          <option value="shared_by_me" ${visibleChecklistScope === 'shared_by_me' ? 'selected' : ''}>Shared by me</option>
+          <option value="shared_with_me" ${visibleChecklistScope === 'shared_with_me' ? 'selected' : ''}>Shared with me</option>
+        </select>
       </div>
       <div class="category-order-toolbar-inner">
         <button class="category-edit-order-btn" title="Edit checklist order" aria-label="Edit checklist order">
@@ -3863,6 +3955,42 @@
       checklistSearchInput.addEventListener('search', filterChecklists)
     }
 
+    const checklistScopeSelect = toolbar.querySelector('#visibleChecklistScope')
+    checklistScopeSelect?.addEventListener('change', async () => {
+      visibleChecklistScope = checklistScopeSelect.value || 'mine'
+      try {
+        const rows = visibleChecklistScope === 'mine'
+          ? await SupabaseService.getAllChecklists()
+          : await SupabaseService.searchVisibleChecklists(checklistSearchInput?.value || '', {
+              scope: visibleChecklistScope,
+              limit: 100
+            })
+
+        checklists = rows.map(cl => ({
+          ...cl,
+          id: cl.id,
+          name: cl.name,
+          tags: cl.activities || cl.tags || [],
+          startDate: cl.start_date || cl.startDate || null,
+          endDate: cl.end_date || cl.endDate || null,
+          visibility: cl.visibility || 'public',
+          publishedAt: cl.published_at || cl.publishedAt || null,
+          accessSource: cl.access_source || cl.accessSource || 'mine',
+          shareDirection: cl.share_direction || cl.shareDirection || null,
+          accessRole: cl.access_role || cl.accessRole || null,
+          canEdit: cl.can_edit || cl.canEdit || false,
+          recipientCount: cl.recipient_count || cl.recipientCount || 0,
+          activeLinkCount: cl.active_link_count || cl.activeLinkCount || 0,
+          items: cl.items || [],
+          created: cl.created_at || cl.created
+        }))
+        renderChecklist()
+      } catch (err) {
+        console.error('Visible checklist search failed:', err)
+        alert('Visible checklist search failed: ' + err.message)
+      }
+    })
+
     // Attach event listeners to toolbar buttons
     const editOrderBtn = toolbar.querySelector('.category-edit-order-btn')
     if (editOrderBtn) {
@@ -3878,6 +4006,13 @@
         e.stopPropagation()
         toggleAllChecklists()
       })
+    }
+
+    if (checklists.length === 0) {
+      const emptyState = document.createElement('div')
+      emptyState.style.cssText = 'text-align:center;padding:40px;color:var(--muted)'
+      emptyState.innerHTML = '<p>No checklists in this view.</p>'
+      checklistCardsEl.appendChild(emptyState)
     }
 
     // Render each checklist as a top-level collapsible section
@@ -3926,6 +4061,7 @@
       const checklistHeader = document.createElement('div')
       checklistHeader.className = 'checklist-header' + (totalCount > 0 && checkedCount === totalCount ? ' complete' : '')
       const canEditChecklist = canEditResource(checklist)
+      const ownsChecklist = isResourceOwner(checklist)
 
       const tagsHtml = checklist.tags && checklist.tags.length > 0
         ? `<div class="checklist-tags">${checklist.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}</div>`
@@ -3989,17 +4125,19 @@
               </svg>
             </button>
             ` : ''}
-            <button class="btn icon" data-action="share-checklist" data-id="${checklist.id}" title="Share checklist">
+            ${ownsChecklist ? `
+            <button class="btn icon" data-action="share-checklist" data-id="${checklist.id}" title="Create temporary checklist link">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
               </svg>
             </button>
+            ` : ''}
             <button class="btn icon" data-action="copy-checklist" data-id="${checklist.id}" title="Copy checklist">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
               </svg>
             </button>
-            ${canEditChecklist ? `
+            ${ownsChecklist ? `
             <button class="btn icon delete" data-action="delete-checklist" data-id="${checklist.id}" title="Delete checklist">
               <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
@@ -4858,7 +4996,10 @@
 
         renderCategoryCheckboxes(selectedCategories)
         renderGearItems(selectedCategories, itemIds)
-        renderVisibilityPicker('checklistVisibilityPicker', cl)
+        renderVisibilityPicker('checklistVisibilityPicker', {
+          ...cl,
+          resourceType: 'checklist'
+        })
 
         if(checklistModal) checklistModal.classList.remove('hidden')
       }
@@ -4875,6 +5016,10 @@
       const checklist = checklists.find(c => c.id === id)
 
       if(checklist){
+        if (!isResourceOwner(checklist)) {
+          alertOwnerOnly('checklists')
+          return
+        }
         openShareChecklistModal(checklist)
       }
       return
@@ -4888,7 +5033,7 @@
 
       const id = btn.dataset.id
       const checklist = checklists.find(c => c.id === id)
-      if (checklist && !canEditResource(checklist)) {
+      if (checklist && !isResourceOwner(checklist)) {
         alertOwnerOnly('checklists')
         return
       }
@@ -5059,7 +5204,9 @@
   function renderCategoryCheckboxes(selectedCategories = []){
     if(!categoriesCheckboxesEl) return
 
-    const allCategories = Array.isArray(categoryOrder) ? categoryOrder : []
+    const allCategories = Array.isArray(categoryOrder)
+      ? categoryOrder.filter(cat => typeof cat === 'string' && cat.trim())
+      : []
 
     categoriesCheckboxesEl.innerHTML = allCategories.map(cat => {
       const checked = selectedCategories.includes(cat) ? 'checked' : ''
@@ -5230,7 +5377,7 @@
   })
 
   // Save checklist
-  checklistForm.addEventListener('submit', e => {
+  checklistForm.addEventListener('submit', async e => {
     e.preventDefault()
 
     // Collect selected items from checkboxes
@@ -5246,6 +5393,7 @@
 
     if(!data.name) return
 
+    const accessSettings = getAccessSettings('checklistVisibilityPicker')
     if(editingChecklistId){
       const idx = checklists.findIndex(c => c.id === editingChecklistId)
       if(idx !== -1){
@@ -5266,9 +5414,20 @@
 
         // Update checklist in Supabase
         if (SupabaseService.getCurrentUser()) {
-          SupabaseService.updateChecklist(editingChecklistId, checklists[idx]).catch(err => {
+          try {
+            await SupabaseService.updateChecklist(editingChecklistId, checklists[idx])
+            if (isResourceOwner(checklists[idx])) {
+              await SupabaseService.configureResourceAccess(
+                'checklist',
+                editingChecklistId,
+                accessSettings
+              )
+            }
+          } catch (err) {
             console.error('Error updating checklist:', err)
-          })
+            alert('Error updating checklist: ' + err.message)
+            return
+          }
         }
       }
     } else {
@@ -5281,14 +5440,25 @@
         ...data,
         id: uid(),
         created: Date.now(),
+        accessSource: 'mine',
         items: selectedItemIds.map(itemId => ({itemId, checked: false}))
       }
       checklists.unshift(newChecklist)
 
       // Save checklist to Supabase
-      SupabaseService.createChecklist(newChecklist).catch(err => {
+      try {
+        await SupabaseService.createChecklist(newChecklist)
+        await SupabaseService.configureResourceAccess(
+          'checklist',
+          newChecklist.id,
+          accessSettings
+        )
+      } catch (err) {
         console.error('Error creating checklist:', err)
-      })
+        checklists = checklists.filter(checklist => checklist.id !== newChecklist.id)
+        alert('Error creating checklist: ' + err.message)
+        return
+      }
     }
 
     renderChecklist()
@@ -5752,14 +5922,22 @@
 
       try {
         if (typeof SupabaseService.getCurrentUserEntitlements !== 'function') {
-          visibilityEntitlements = { canUsePrivateVisibility: false }
+          visibilityEntitlements = {
+            canUsePrivateVisibility: false,
+            canUseSharedVisibility: false,
+            canGrantEdit: false
+          }
           console.warn('Visibility entitlements API is unavailable; using free visibility defaults')
         } else {
         visibilityEntitlements = await SupabaseService.getCurrentUserEntitlements()
         }
       } catch (err) {
         console.warn('Error loading visibility entitlements:', err)
-        visibilityEntitlements = { canUsePrivateVisibility: false }
+        visibilityEntitlements = {
+          canUsePrivateVisibility: false,
+          canUseSharedVisibility: false,
+          canGrantEdit: false
+        }
       }
 
       // Load gear items
@@ -5846,6 +6024,11 @@
         visibility: item.visibility || 'public',
         publishedAt: item.published_at || item.publishedAt || null,
         accessSource: item.access_source || item.accessSource || 'mine',
+        shareDirection: item.share_direction || item.shareDirection || null,
+        accessRole: item.access_role || item.accessRole || null,
+        canEdit: item.can_edit || item.canEdit || false,
+        recipientCount: item.recipient_count || item.recipientCount || 0,
+        activeLinkCount: item.active_link_count || item.activeLinkCount || 0,
         created: item.created_at
       }))
 
@@ -5905,6 +6088,11 @@
         visibility: cl.visibility || 'public',
         publishedAt: cl.published_at || cl.publishedAt || null,
         accessSource: cl.access_source || cl.accessSource || 'mine',
+        shareDirection: cl.share_direction || cl.shareDirection || null,
+        accessRole: cl.access_role || cl.accessRole || null,
+        canEdit: cl.can_edit || cl.canEdit || false,
+        recipientCount: cl.recipient_count || cl.recipientCount || 0,
+        activeLinkCount: cl.active_link_count || cl.activeLinkCount || 0,
         items: (cl.items || []).map(item => ({
           ...item,
           category: item.category
@@ -6451,6 +6639,10 @@
     const item = items.find(i => i.id === itemId)
     if (!item) {
       alert('Item not found')
+      return
+    }
+    if (!isResourceOwner(item)) {
+      alertOwnerOnly('gear items')
       return
     }
 

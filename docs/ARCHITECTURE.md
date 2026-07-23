@@ -84,9 +84,9 @@ File: `www/js/visibility-ui.js`
 Responsibilities:
 
 - Render Public / Private / Shared controls.
-- Disable Private and Shared for users without paid entitlements.
+- Disable Private, Shared and Enable edit according to paid entitlements.
 - Collect selected visibility values from forms.
-- Render grantee lists for shared resources.
+- Render grantee lists with per-user Enable edit controls and active temporary links.
 - Map `gear_items`, `checklists` and `storages` rows into frontend models.
 - Produce visibility/source badges for search results and cards.
 
@@ -116,15 +116,18 @@ Responsibilities:
 3. Client inserts a row into `shared_items` with copied JSON payload and 30-day expiry.
 4. Recipient opens `?share=CODE` or `?checklist=CODE`.
 5. Client loads `shared_items` by `share_code` without requiring the recipient to be signed in.
+6. The link remains an anonymous, read-only snapshot and is independent from authenticated Shared grants.
+7. The owner can revoke a link directly; moving a resource to Private may revoke all links when the owner selects that option.
 
 ### Visibility And Global Search Flow
 
 1. After sign-in, the client loads `user_entitlements`.
 2. Add/edit forms default to `public` and disable `private` / `shared` when entitlements do not allow them.
-3. CRUD calls persist `visibility` and `published_at`; `access_source` remains read-only.
+3. Owner CRUD calls persist visibility plus an atomic recipient list through `configure_resource_access`; recipients may be viewers or editors.
 4. Personal realtime subscriptions remain owner-filtered.
-5. Global visible search uses manual refresh through `search_visible_*` RPCs and returns public/shared resources with `access_source` badges.
-6. Cards for resources not owned by the current user hide edit/delete controls in the frontend; RLS remains the source of truth.
+5. Global visible search uses manual refresh through `search_visible_*` RPCs and exposes Public, Shared by me and Shared with me filters.
+6. Viewer cards hide edit/delete controls. Editor cards allow content editing, while visibility and access controls remain owner-only.
+7. RLS and update-protection triggers remain the source of truth for read/write authorization.
 
 ## Deployment Shape
 

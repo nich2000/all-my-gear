@@ -15,7 +15,9 @@ Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 - Per-user category ordering and sorting preferences.
 - Storage locations for gear items.
 - Trip checklists with selected gear items, dates and activity tags.
-- Share links for individual items and checklists.
+- Public, Private and Shared visibility for gear items and checklists.
+- Shared access by user with separate viewer/editor roles and Shared by me / Shared with me filters.
+- Revocable, anonymous read-only links for individual items and checklists.
 - Realtime synchronization for gear items and checklists.
 - Photo upload to the `gear-photos` Supabase Storage bucket with signed URL caching on the client.
 - Migration helper from legacy `localStorage` keys.
@@ -35,6 +37,7 @@ Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 | `sql/*_rows.sql` | Exported data rows for application tables. Treat as data snapshots, not migrations. |
 | `supabase/docker-compose.yml` | Self-hosted Supabase stack. |
 | `nginx/all-my-gear` | Production nginx reverse proxy example. |
+| `nginx/maintenance.html` | Standalone HTTP 503 page used while production is being updated. |
 | `scripts/*.sh` | Docker pull/run/stop and certbot helper scripts. |
 | `Dockerfile` | Multi-stage Docker image for the Go server plus static assets. |
 | `docs/` | Project analysis, architecture, data model and operations documentation. |

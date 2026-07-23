@@ -184,6 +184,68 @@ test('database migrations add subscription entitlements and durable visibility c
   assert.match(allSql, /constraint resource_access_grants_role_check check \(role = 'viewer'\)/)
 })
 
+test('collaborative visibility migration adds editor roles and directional sharing', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607230001_collaborative_visibility_access.sql')
+  assert.ok(migration, 'collaborative visibility migration must exist')
+
+  const sql = compact(migration.sql)
+  for (const entitlement of [
+    'can_grant_edit',
+    'max_shared_users',
+    'max_editors',
+    'max_active_share_links'
+  ]) {
+    assert.ok(sql.includes(entitlement), `${entitlement} entitlement must be modeled`)
+  }
+
+  assert.ok(sql.includes("check (role in ('viewer', 'editor'))"))
+  assert.ok(sql.includes('create unique index if not exists uq_resource_access_grants_user'))
+  assert.ok(sql.includes('create unique index if not exists uq_resource_access_grants_email'))
+  assert.ok(sql.includes('create or replace function public.can_edit_gear_item'))
+  assert.ok(sql.includes('create or replace function public.can_edit_checklist'))
+  assert.ok(sql.includes('create or replace function public.configure_resource_access'))
+  assert.ok(sql.includes('create or replace function public.get_resource_access_settings'))
+  assert.ok(sql.includes('create or replace function public.revoke_temporary_share_link'))
+  assert.ok(sql.includes("'shared_by_me'"))
+  assert.ok(sql.includes("'shared_with_me'"))
+  assert.match(sql, /create policy gear_items_update_owner_or_editor/)
+  assert.match(sql, /create policy checklists_update_owner_or_editor/)
+  assert.match(sql, /editors cannot change ownership or access settings/)
+  assert.match(sql, /on storage\.objects for select to anon, authenticated/)
+})
+
+test('visibility API grants expose RLS-managed resources to PostgREST roles', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607230002_visibility_api_privileges.sql')
+  assert.ok(migration, 'visibility API privilege migration must exist')
+
+  const sql = compact(migration.sql)
+  assert.ok(sql.includes('grant usage on schema public to anon, authenticated'))
+  assert.ok(sql.includes('grant select on table public.gear_items to anon, authenticated'))
+  assert.ok(sql.includes('grant select on table public.checklists to anon, authenticated'))
+  assert.ok(sql.includes('grant insert, update, delete on table public.gear_items to authenticated'))
+  assert.ok(sql.includes('grant insert, update, delete on table public.checklists to authenticated'))
+  assert.ok(sql.includes('grant select, insert, update, delete on table public.resource_access_grants to authenticated'))
+  assert.ok(sql.includes('grant execute on function public.search_visible_gear(text, integer, integer, text) to anon, authenticated'))
+
+  const authMigration = migrations.find(({ name }) => name === '202607230003_auth_helper_privileges.sql')
+  assert.ok(authMigration, 'auth helper privilege migration must exist')
+  const authSql = compact(authMigration.sql)
+  assert.ok(authSql.includes('grant usage on schema auth to anon, authenticated'))
+  assert.ok(authSql.includes('grant execute on function auth.uid() to anon, authenticated'))
+  assert.ok(authSql.includes('grant execute on function auth.jwt() to anon, authenticated'))
+
+  const appMigration = migrations.find(({ name }) => name === '202607230004_app_api_privileges.sql')
+  assert.ok(appMigration, 'app API privilege migration must exist')
+  const appSql = compact(appMigration.sql)
+  for (const catalog of ['categories', 'outdoor_brands', 'outdoor_activities']) {
+    assert.ok(appSql.includes(`grant select on table public.${catalog} to anon, authenticated`))
+  }
+  assert.ok(appSql.includes('grant select, insert, update, delete on table public.category_order to authenticated'))
+  assert.ok(appSql.includes('grant select, insert, update, delete on table public.user_category_preferences to authenticated'))
+})
+
 test('subscription entitlement tables and view satisfy Supabase public schema security lint', () => {
   const migrations = readMigrations()
   const allSql = compact(migrations.map(migration => migration.sql).join('\n'))
@@ -572,4 +634,18 @@ test('database migrations contain SQL access scenario checks', () => {
   ]) {
     assert.ok(allSql.includes(scenario), `missing SQL check scenario: ${scenario}`)
   }
+})
+
+test('resource SELECT policies allow owner INSERT RETURNING without recursive lookup', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(
+    ({ name }) => name === '202607230005_fix_resource_insert_returning_rls.sql'
+  )
+  assert.ok(migration, 'INSERT RETURNING RLS fix migration must exist')
+
+  const sql = compact(migration.sql)
+  assert.ok(sql.includes('user_id = (select auth.uid())'))
+  assert.ok(sql.includes("visibility = 'public'"))
+  assert.ok(sql.includes('public.can_read_gear_item(id)'))
+  assert.ok(sql.includes('public.can_read_checklist(id)'))
 })

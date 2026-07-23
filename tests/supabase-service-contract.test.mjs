@@ -8,7 +8,20 @@ const appSource = readFileSync(new URL('../www/js/app.js', import.meta.url), 'ut
 
 test('supabase service exposes entitlement API across browser scripts', () => {
   assert.match(serviceSource, /async getCurrentUserEntitlements\(\)/)
+  assert.match(serviceSource, /canUseSharedVisibility/)
+  assert.match(serviceSource, /canGrantEdit/)
   assert.match(serviceSource, /window\.SupabaseService\s*=\s*SupabaseService/)
+})
+
+test('supabase service exposes collaborative access and directional filters', () => {
+  assert.match(serviceSource, /async getResourceAccessSettings\(resourceType, resourceId\)/)
+  assert.match(serviceSource, /async configureResourceAccess\(resourceType, resourceId, settings = \{\}\)/)
+  assert.match(serviceSource, /async revokeTemporaryShareLink\(linkId\)/)
+  assert.match(serviceSource, /p_recipients: settings\.recipients \|\| \[\]/)
+  assert.match(serviceSource, /access_scope: filters\.scope \|\| filters\.visibility \|\| 'all_visible'/)
+  assert.match(serviceSource, /scope === 'shared_by_me'/)
+  assert.match(appSource, />Shared by me</)
+  assert.match(appSource, />Shared with me</)
 })
 
 test('supabase service loads category catalog and user category preferences from database', () => {
@@ -62,9 +75,17 @@ test('frontend category controls are rendered from loaded category order', () =>
   assert.match(appSource, /function renderCategoryOptions\(selectedCategory\)/)
   assert.match(appSource, /const orderedCategories = Array\.isArray\(categoryOrder\) \? \[\.\.\.categoryOrder\] : \[\]/)
   assert.match(appSource, /\$\{renderCategoryOptions\(it\.category\)\}/)
-  assert.match(appSource, /const allCategories = Array\.isArray\(categoryOrder\) \? categoryOrder : \[\]/)
+  assert.match(appSource, /categoryOrder\.filter\(cat => typeof cat === 'string' && cat\.trim\(\)\)/)
   assert.doesNotMatch(appSource, /<option value=["']Shelter["']/)
   assert.doesNotMatch(appSource, /<option value=\\["']Shelter\\["']/)
+})
+
+test('checklist sharing filters remain available when the current view is empty', () => {
+  const toolbarIndex = appSource.indexOf("toolbar.className = 'category-order-toolbar'")
+  const emptyStateIndex = appSource.indexOf("emptyState.innerHTML = '<p>No checklists in this view.</p>'")
+
+  assert.ok(toolbarIndex > -1)
+  assert.ok(emptyStateIndex > toolbarIndex)
 })
 
 test('saving category preferences fails before deleting rows when a category is missing from the database catalog', () => {

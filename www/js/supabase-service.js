@@ -345,7 +345,6 @@ const SupabaseService = {
       .from('gear_items')
       .update(dbUpdates)
       .eq('id', id)
-      .eq('user_id', this.currentUser.id)
       .select()
       .maybeSingle()
 
@@ -483,7 +482,6 @@ const SupabaseService = {
       .from('checklists')
       .update(updateData)
       .eq('id', id)
-      .eq('user_id', this.currentUser.id)
       .select()
       .maybeSingle()
 
@@ -690,7 +688,13 @@ const SupabaseService = {
   // ==================== ENTITLEMENTS / ACCESS GRANTS ====================
 
   async getCurrentUserEntitlements() {
-    if (!this.currentUser) return { canUsePrivateVisibility: false }
+    if (!this.currentUser) {
+      return {
+        canUsePrivateVisibility: false,
+        canUseSharedVisibility: false,
+        canGrantEdit: false
+      }
+    }
 
     const { data, error } = await supabaseClient
       .from('user_entitlements')
@@ -701,15 +705,25 @@ const SupabaseService = {
     if (error) {
       if (isMissingEntitlementsSchemaError(error)) {
         console.info('Entitlements schema is not available; using free visibility defaults')
-        return { canUsePrivateVisibility: false }
+        return {
+          canUsePrivateVisibility: false,
+          canUseSharedVisibility: false,
+          canGrantEdit: false
+        }
       }
       console.warn('Entitlements lookup failed, falling back to free plan:', error)
-      return { canUsePrivateVisibility: false }
+      return {
+        canUsePrivateVisibility: false,
+        canUseSharedVisibility: false,
+        canGrantEdit: false
+      }
     }
 
     return {
       ...(data || {}),
-      canUsePrivateVisibility: Boolean(data?.can_make_private || data?.can_share_with_users || data?.can_use_private_visibility || data?.private_visibility_enabled)
+      canUsePrivateVisibility: Boolean(data?.can_make_private || data?.can_use_private_visibility || data?.private_visibility_enabled),
+      canUseSharedVisibility: Boolean(data?.can_share_with_users || data?.can_use_shared_visibility),
+      canGrantEdit: Boolean(data?.can_grant_edit)
     }
   },
 
@@ -733,22 +747,56 @@ const SupabaseService = {
     return data || []
   },
 
-  async setResourceVisibility(resourceType, resourceId, visibility) {
+  async getResourceAccessSettings(resourceType, resourceId) {
     if (!this.currentUser) throw new Error('Not authenticated')
 
-    const table = this.getResourceTable(resourceType)
-    const payload = window.VisibilityUI.buildResourceSavePayload({ visibility })
-
-    const { data, error } = await supabaseClient
-      .from(table)
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq('id', resourceId)
-      .eq('user_id', this.currentUser.id)
-      .select()
-      .maybeSingle()
+    const { data, error } = await supabaseClient.rpc('get_resource_access_settings', {
+      p_resource_type: this.normalizeResourceType(resourceType),
+      p_resource_id: resourceId
+    })
 
     if (error) throw error
-    return this.mapResourceRow(resourceType, data)
+    return {
+      visibility: data?.visibility || 'public',
+      recipients: data?.recipients || [],
+      temporaryLinks: data?.temporary_links || []
+    }
+  },
+
+  async configureResourceAccess(resourceType, resourceId, settings = {}) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+
+    const { data, error } = await supabaseClient.rpc('configure_resource_access', {
+      p_resource_type: this.normalizeResourceType(resourceType),
+      p_resource_id: resourceId,
+      p_visibility: window.VisibilityUI.normalizeVisibility(settings.visibility),
+      p_recipients: settings.recipients || [],
+      p_revoke_temporary_links: Boolean(
+        settings.visibility === 'private' && settings.revokeTemporaryLinks
+      )
+    })
+
+    if (error) throw error
+    return {
+      visibility: data?.visibility || settings.visibility || 'public',
+      recipients: data?.recipients || [],
+      temporaryLinks: data?.temporary_links || []
+    }
+  },
+
+  async revokeTemporaryShareLink(linkId) {
+    if (!this.currentUser) throw new Error('Not authenticated')
+    const { error } = await supabaseClient.rpc('revoke_temporary_share_link', {
+      p_link_id: linkId
+    })
+    if (error) throw error
+  },
+
+  async setResourceVisibility(resourceType, resourceId, visibility) {
+    return this.configureResourceAccess(resourceType, resourceId, {
+      visibility,
+      recipients: []
+    })
   },
 
   async grantResourceAccess(resourceType, resourceId, emailOrUserId) {
@@ -857,7 +905,8 @@ const SupabaseService = {
     const { data, error } = await supabaseClient.rpc('search_visible_gear', {
       search_query: query || '',
       result_limit: filters.limit || 50,
-      result_offset: filters.offset || 0
+      result_offset: filters.offset || 0,
+      access_scope: filters.scope || filters.visibility || 'all_visible'
     })
 
     if (error) return this.handleVisibleSearchError(error, 'search_visible_gear')
@@ -870,7 +919,8 @@ const SupabaseService = {
     const { data, error } = await supabaseClient.rpc('search_visible_checklists', {
       search_query: query || '',
       result_limit: filters.limit || 50,
-      result_offset: filters.offset || 0
+      result_offset: filters.offset || 0,
+      access_scope: filters.scope || filters.visibility || 'all_visible'
     })
 
     if (error) return this.handleVisibleSearchError(error, 'search_visible_checklists')
@@ -895,7 +945,22 @@ const SupabaseService = {
     if (scope === 'all' || scope === 'all_visible') return rows
     if (scope === 'mine') return rows.filter(row => row.accessSource === 'mine' || row.access_source === 'mine')
     if (scope === 'public') return rows.filter(row => row.visibility === 'public' || row.accessSource === 'public' || row.access_source === 'public')
-    if (scope === 'shared') return rows.filter(row => row.accessSource === 'shared' || row.access_source === 'shared' || row.accessSource === 'shared_with_me' || row.access_source === 'shared_with_me')
+    if (scope === 'shared' || scope === 'shared_with_me') {
+      return rows.filter(row =>
+        row.shareDirection === 'shared_with_me' ||
+        row.share_direction === 'shared_with_me' ||
+        row.accessSource === 'shared' ||
+        row.access_source === 'shared' ||
+        row.accessSource === 'shared_with_me' ||
+        row.access_source === 'shared_with_me'
+      )
+    }
+    if (scope === 'shared_by_me') {
+      return rows.filter(row =>
+        row.shareDirection === 'shared_by_me' ||
+        row.share_direction === 'shared_by_me'
+      )
+    }
     return rows
   },
 
