@@ -12,6 +12,7 @@ Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 
 - Gear inventory with category, brand, model, weight, price, purchase year, rating, comment and photo.
 - User authentication through Supabase Auth.
+- Role-based administration at `/admin` for users, catalogs, roles and subscriptions.
 - Per-user category ordering and sorting preferences.
 - Storage locations for gear items.
 - Trip checklists with selected gear items, dates and activity tags.
@@ -30,6 +31,7 @@ Browser -> Go static/config server -> Supabase JS SDK -> self-hosted Supabase
 | `www/index.html` | SPA HTML shell, auth/profile/share/checklist modals and script loading. CSP is served by nginx in production. |
 | `www/js/app.js` | Main UI state, rendering, forms, checklists, sharing, image handling and realtime wiring. |
 | `www/js/supabase-service.js` | Supabase client wrapper for auth, database, storage, sharing and subscriptions. |
+| `www/admin/` | Separate administration UI; protected operations are implemented by permission-checked Supabase RPCs. |
 | `www/style/style.css` | Application styles. |
 | `supabase/migrations/` | Ordered Supabase migrations for the application schema. |
 | `supabase/tests/visibility_access_checks.sql` | SQL scenario checks for visibility and entitlement behavior. |
@@ -116,6 +118,7 @@ TLS is terminated by nginx with Let's Encrypt certificates for `all-my-gear.pro`
 - [Architecture](docs/ARCHITECTURE.md)
 - [Data Model](docs/DATA_MODEL.md)
 - [Operations](docs/OPERATIONS.md)
+- [Administration and role matrix](docs/ADMINISTRATION.md)
 
 ## Current Risk Summary
 

@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>All My Gear — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260727a">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/js/supabase-config.js"></script>
+  <script defer src="/admin/admin.js?v=20260727a"></script>
+</head>
+<body>
+  <div id="loader" class="loader">Checking access…</div>
+
+  <main id="authView" class="center-card hidden">
+    <p class="eyebrow">ALL MY GEAR</p>
+    <h1>Administration</h1>
+    <p class="muted">Sign in with an administrator account.</p>
+    <form id="loginForm" class="stack">
+      <label>Email<input id="loginEmail" type="email" autocomplete="username" required></label>
+      <label>Password<input id="loginPassword" type="password" autocomplete="current-password" required></label>
+      <button type="submit">Sign in</button>
+      <button id="googleSignIn" class="secondary" type="button">Continue with Google</button>
+    </form>
+    <p id="loginError" class="error hidden"></p>
+  </main>
+
+  <main id="forbiddenView" class="center-card hidden">
+    <p class="eyebrow">403</p>
+    <h1>Access denied</h1>
+    <p>This account does not have access to administration.</p>
+    <button id="forbiddenSignOut" type="button">Sign out</button>
+  </main>
+
+  <div id="adminView" class="app-shell hidden">
+    <aside class="sidebar">
+      <div>
+        <p class="eyebrow">ALL MY GEAR</p>
+        <h1>Admin</h1>
+      </div>
+      <nav id="adminNav">
+        <button class="nav-item active" data-section="users">Users</button>
+        <button class="nav-item" data-section="catalogs">Catalogs</button>
+        <button class="nav-item" data-section="roles">Roles</button>
+        <button class="nav-item" data-section="subscriptions">Subscriptions</button>
+      </nav>
+      <div class="session">
+        <span id="sessionEmail"></span>
+        <span id="sessionRoles" class="role-line"></span>
+        <button id="signOutBtn" class="secondary" type="button">Sign out</button>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div id="notice" class="notice hidden"></div>
+
+      <section id="usersSection" class="section active">
+        <div class="section-heading">
+          <div><p class="eyebrow">Access</p><h2>Users</h2></div>
+          <input id="userSearch" class="search" type="search" placeholder="Search by email or nickname">
+        </div>
+        <div id="usersTable" class="table-card"></div>
+      </section>
+
+      <section id="catalogsSection" class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Reference data</p><h2>Catalogs</h2></div>
+          <div class="actions">
+            <select id="catalogSelect">
+              <option value="categories">Categories</option>
+              <option value="outdoor_brands">Outdoor brands</option>
+              <option value="outdoor_activities">Outdoor activities</option>
+            </select>
+            <button id="addCatalogItem" type="button">Add item</button>
+          </div>
+        </div>
+        <div id="catalogTable" class="table-card"></div>
+      </section>
+
+      <section id="rolesSection" class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Authorization</p><h2>Roles</h2></div>
+        </div>
+        <div class="matrix-note">
+          <strong>Role matrix:</strong> User — application only; Admin — users, catalogs and subscriptions;
+          Superadmin — Admin permissions plus role and role-assignment management.
+        </div>
+        <div id="rolesGrid" class="cards-grid"></div>
+      </section>
+
+      <section id="subscriptionsSection" class="section">
+        <div class="section-heading">
+          <div><p class="eyebrow">Entitlements</p><h2>Subscriptions</h2></div>
+          <button id="addSubscription" type="button">Add subscription</button>
+        </div>
+        <div id="subscriptionsTable" class="table-card"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="editDialog">
+    <form id="editForm" method="dialog">
+      <div class="dialog-heading">
+        <h2 id="dialogTitle">Edit</h2>
+        <button id="closeDialog" class="icon-button" value="cancel" aria-label="Close">×</button>
+      </div>
+      <div id="dialogFields" class="stack"></div>
+      <div class="dialog-actions">
+        <button class="secondary" value="cancel">Cancel</button>
+        <button id="saveDialog" value="default">Save</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

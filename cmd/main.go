@@ -78,6 +78,11 @@ func newHandler(cfg serverConfig) http.Handler {
 			renderSupabaseConfig(w, cfg)
 			return
 		}
+		if r.URL.Path == "/admin" || r.URL.Path == "/admin/" {
+			w.Header().Set("Cache-Control", "no-store")
+			http.ServeFile(w, r, cfg.wwwDir+"admin/index.html")
+			return
+		}
 		http.StripPrefix("/", staticHandler).ServeHTTP(w, r)
 	})
 

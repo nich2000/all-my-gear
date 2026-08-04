@@ -109,7 +109,13 @@ func TestNewHandlerServesStaticFilesAndRenderedSupabaseConfig(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(wwwDir, "js"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(wwwDir, "admin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(wwwDir, "index.html"), []byte("<!doctype html><title>All My Gear</title>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wwwDir, "admin", "index.html"), []byte("<!doctype html><title>All My Gear — Admin</title>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(wwwDir, "js", "supabase-config.js"), []byte("const SUPABASE_URL = '{{.SupabaseUrl}}'\nconst SUPABASE_ANON_KEY = '{{.SupabaseAnonKey}}'\n"), 0o644); err != nil {
@@ -142,6 +148,18 @@ func TestNewHandlerServesStaticFilesAndRenderedSupabaseConfig(t *testing.T) {
 	body := configResponse.Body.String()
 	if !strings.Contains(body, "http://localhost:8000") || !strings.Contains(body, "anon-key") {
 		t.Fatalf("expected rendered Supabase config, got %q", body)
+	}
+
+	adminResponse := httptest.NewRecorder()
+	handler.ServeHTTP(adminResponse, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	if adminResponse.Code != http.StatusOK {
+		t.Fatalf("expected /admin status 200, got %d", adminResponse.Code)
+	}
+	if !strings.Contains(adminResponse.Body.String(), "All My Gear — Admin") {
+		t.Fatalf("expected admin shell, got %q", adminResponse.Body.String())
+	}
+	if adminResponse.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("expected admin shell to disable caching, got %q", adminResponse.Header().Get("Cache-Control"))
 	}
 }
 

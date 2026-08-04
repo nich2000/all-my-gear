@@ -649,3 +649,42 @@ test('resource SELECT policies allow owner INSERT RETURNING without recursive lo
   assert.ok(sql.includes('public.can_read_gear_item(id)'))
   assert.ok(sql.includes('public.can_read_checklist(id)'))
 })
+
+test('admin migration defines the least-privilege role matrix and protected RPC boundary', () => {
+  const migrations = readMigrations()
+  const migration = migrations.find(({ name }) => name === '202607270001_admin_roles_and_api.sql')
+  assert.ok(migration, 'admin role migration must exist')
+
+  const sql = compact(migration.sql)
+  for (const table of ['app_roles', 'app_permissions', 'app_role_permissions', 'app_user_roles']) {
+    assert.ok(sql.includes(`create table if not exists public.${table}`), `${table} must be created`)
+    assert.ok(sql.includes(`alter table public.${table} enable row level security`), `${table} must enable RLS`)
+  }
+
+  for (const role of ['user', 'admin', 'superadmin']) {
+    assert.ok(sql.includes(`('${role}'`), `${role} role must be seeded`)
+  }
+
+  assert.ok(sql.includes("perform public.require_app_permission('users.read')"))
+  assert.ok(sql.includes("perform public.require_app_permission('catalogs.update')"))
+  assert.ok(sql.includes("perform public.require_app_permission('roles.update')"))
+  assert.ok(sql.includes("perform public.require_app_permission('subscriptions.update')"))
+  assert.ok(sql.includes('a superadmin cannot remove their own superadmin role'))
+  assert.ok(sql.includes('administrative roles must retain admin.access'))
+
+  for (const email of [
+    'nich2000@mail.ru',
+    'ili.gurevich@gmail.com',
+    'nikolai.svistoun@gmail.com'
+  ]) {
+    assert.ok(sql.includes(`'${email}'`), `${email} must be bootstrapped as superadmin`)
+  }
+})
+
+test('the user interface has no links or buttons that expose the admin route', () => {
+  const indexHtml = readFileSync(new URL('../www/index.html', import.meta.url), 'utf8').toLowerCase()
+  assert.equal(indexHtml.includes('href="/admin'), false)
+  assert.equal(indexHtml.includes("href='/admin"), false)
+  assert.equal(indexHtml.includes('data-route="admin'), false)
+  assert.equal(indexHtml.includes('id="admin'), false)
+})
